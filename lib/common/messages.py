@@ -171,12 +171,14 @@ def display_agents(agents):
     Take a dictionary of agents and build the display for the main menu.
     """
 
+    rowToggle = 0
+
     if len(agents) > 0:
 
         print ''
         print helpers.color("[*] Active agents:\n")
-        print "  Name            Lang  Internal IP     Machine Name    Username            Process             Delay    Last Seen"
-        print "  ---------       ----  -----------     ------------    ---------           -------             -----    --------------------"
+        print " Name     La Internal IP     Machine Name      Username                Process            PID    Delay    Last Seen"
+        print " ----     -- -----------     ------------      --------                -------            ---    -----    ---------"
 
         for agent in agents:
 
@@ -192,8 +194,20 @@ def display_agents(agents):
             else:
                 agent['language'] = 'X'
 
-            print "  %.16s%.6s%.16s%.16s%.20s%.20s%.9s%.20s" % ('{0: <16}'.format(agent['name']), '{0: <6}'.format(agent['language']), '{0: <16}'.format(agent['internal_ip']), '{0: <16}'.format(agent['hostname']), '{0: <20}'.format(agent['username']), '{0: <20}'.format(str(agent['process_name']) + "/" + str(agent['process_id'])), '{0: <9}'.format(str(agent['delay']) + "/"  +str(agent['jitter'])), agent['lastseen_time'])
+            print " %.8s %.2s %.15s %.17s %.23s %.18s %.6s %.8s %.30s" % ('{0: <8}'.format(agent['name']),
+                                  '{0: <2}'.format(agent['language']),
+                                  '{0: <15}'.format(str(agent['internal_ip']).split(" ")[0]),
+                                  '{0: <17}'.format(agent['hostname']),
+                                  '{0: <23}'.format(agent['username']),
+                                  '{0: <18}'.format(agent['process_name']),
+                                  '{0: <6}'.format(str(agent['process_id'])),
+                                  '{0: <8}'.format(str(agent['delay']) + "/"  +str(agent['jitter'])),
+                                  str(helpers.lastseen(agent['lastseen_time'], agent['delay'], agent['jitter'])))
 
+            # Skip rows for better readability
+            rowToggle = (rowToggle + 1) % 3
+            if rowToggle == 0:
+                print
         print ''
     else:
         print helpers.color('[!] No agents currently registered')
@@ -220,14 +234,14 @@ def display_agent(agent, returnAsString=False):
         print ''
 
 
-def display_active_listeners(listeners):
+def display_listeners(listeners, type = "Active"):
     """
     Take an active listeners list and display everything nicely.
     """
 
     if len(listeners) > 0:
         print ''
-        print helpers.color("[*] Active listeners:\n")
+        print helpers.color("[*] %s listeners:\n" % type)
 
         print "  Name              Module          Host                                 Delay/Jitter   KillDate"
         print "  ----              ------          ----                                 ------------   --------"
@@ -265,7 +279,8 @@ def display_active_listeners(listeners):
         print ''
 
     else:
-        print helpers.color("[!] No listeners currently active ")
+        if(type.lower() != "inactive"):
+            print helpers.color("[!] No listeners currently %s " % type.lower())
 
 
 def display_active_listener(listener):

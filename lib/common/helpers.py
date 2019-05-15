@@ -52,11 +52,24 @@ import threading
 import pickle
 import netifaces
 import random
-from time import localtime, strftime
+
 import subprocess
 import fnmatch
 import urllib, urllib2
+import hashlib
+import datetime
+import uuid
+import ipaddress
+from datetime import datetime
 
+###############################################################
+#
+# Global Variables
+#
+################################################################
+
+globentropy=random.randint(1,datetime.today().day)
+globDebug=False
 ###############################################################
 #
 # Validation methods
@@ -142,6 +155,13 @@ def random_string(length=-1, charset=string.ascii_letters):
     random_string = ''.join(random.choice(charset) for x in range(length))
     return random_string
 
+
+def generate_random_script_var_name(origvariname,globDebug=False):
+    if globDebug:
+	    return origvariname
+    else:
+	    hash_object=hashlib.sha1(str(origvariname)+str(globentropy)).hexdigest()
+    return hash_object[:-datetime.today().day]
 
 def randomize_capitalization(data):
     """
@@ -584,14 +604,22 @@ def get_datetime():
     """
     Return the current date/time
     """
-    return strftime("%Y-%m-%d %H:%M:%S", localtime())
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+
+def utc_to_local(utc):
+    """
+    Converts a datetime object in UTC to local time
+    """
+
+    offset = datetime.now() - datetime.utcnow()
+    return (utc + offset).strftime("%Y-%m-%d %H:%M:%S")
 
 def get_file_datetime():
     """
     Return the current date/time in a format workable for a file name.
     """
-    return strftime("%Y-%m-%d_%H-%M-%S", localtime())
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 def get_file_size(file):
@@ -671,6 +699,8 @@ def color(string, color=None):
             attr.append('31')
         elif color.lower() == "green":
             attr.append('32')
+        elif color.lower() == "yellow":
+            attr.append('33')
         elif color.lower() == "blue":
             attr.append('34')
         return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
@@ -688,6 +718,20 @@ def color(string, color=None):
         else:
             return string
 
+def lastseen(stamp, delay, jitter):
+    """
+    Colorize the Last Seen field based on measured delays
+    """
+    try:
+        delta = datetime.now() - datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")
+        if delta.seconds > delay * (jitter + 1) * 5:
+            return color(stamp, "red")
+        elif delta.seconds > delay * (jitter + 1):
+            return color(stamp, "yellow")
+        else:
+            return color(stamp, "green")
+    except Exception:
+        return stamp
 
 def unique(seq, idfun=None):
     """
