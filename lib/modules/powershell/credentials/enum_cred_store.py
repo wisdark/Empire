@@ -1,11 +1,19 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
     def __init__(self, mainMenu, params=[]):
         self.info = {
             'Name': 'enum_cred_store',
             'Author': ['BeetleChunks'],
             'Description': ('Dumps plaintext credentials from the Windows Credential Manager for the current interactive user.'),
+            'Software': '',
+            'Techniques': ['T1003'],
             'Background' : True,
             'OutputExtension' : None,
             'NeedsAdmin' : False,
@@ -46,7 +54,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Unable to open script at the configured path: " + str(scriptPath))
+            print(helpers.color("[!] Unable to open script at the configured path: " + str(scriptPath)))
             return ""
 
         script = f.read()
@@ -56,4 +64,6 @@ class Module:
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

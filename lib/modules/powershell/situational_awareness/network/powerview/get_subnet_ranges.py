@@ -1,31 +1,40 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
         self.info = {
-            'Name': 'Get-ExploitableSystem',
+            'Name': 'Get-SubnetRanges',
 
-            'Author': ['Scott Sutherland (@_nullbind)'],
+            'Author': ['@benichmt1'],
 
-            'Description': ('Queries Active Directory for systems likely vulnerable to various '
-                            'Metasploit exploits.'),
+            'Description': ('Pulls hostnames from AD, performs a Reverse DNS lookup, and parses the output into ranges.'),
+
+            'Software': 'S0194',
+
+            'Techniques': ['T1016'],
 
             'Background' : True,
 
             'OutputExtension' : None,
-            
+
             'NeedsAdmin' : False,
 
-            'OpsecSafe' : True,
-            
+            'OpsecSafe' : False,
+
             'Language' : 'powershell',
 
             'MinLanguageVersion' : '2',
-            
+
             'Comments': [
-                'https://github.com/nullbind/Powershellery/blob/master/Stable-ish/ADS/Get-ExploitableSystems.psm1'
+                'Uses Powerview to query AD computers'
             ]
         }
 
@@ -38,33 +47,13 @@ class Module:
                 'Required'      :   True,
                 'Value'         :   ''
             },
-            'ComputerName' : {
-                'Description'   :   'Return computers with a specific name, wildcards accepted.',
+            'IPs' : {
+                'Description'   :   'List the resolved individual IPs',
                 'Required'      :   False,
-                'Value'         :   ''
-            },
-            'SPN' : {
-                'Description'   :   'Return computers with a specific service principal name, wildcards accepted.',
-                'Required'      :   False,
-                'Value'         :   ''
-            },
-            'OperatingSystem' : {
-                'Description'   :   'Return computers with a specific operating system, wildcards accepted.',
-                'Required'      :   False,
-                'Value'         :   ''
-            },
-            'Filter' : {
-                'Description'   :   'A customized ldap filter string to use, e.g. "(description=*admin*)"',
-                'Required'      :   False,
-                'Value'         :   ''
-            },
-            'Ping' : {
-                'Description'   :   "Switch. Ping each host to ensure it's up before enumerating.",
-                'Required'      :   False,
-                'Value'         :   ''
+                'Value'         :   'False'
             },
             'Domain' : {
-                'Description'   :   'The domain to query for computers, defaults to the current domain.',
+                'Description'   :   'The domain to use for the query, defaults to the current domain.',
                 'Required'      :   False,
                 'Value'         :   ''
             }
@@ -73,7 +62,7 @@ class Module:
         # save off a copy of the mainMenu object to access external functionality
         #   like listeners/agent handlers/etc.
         self.mainMenu = mainMenu
-        
+
         for param in params:
             # parameter format is [Name, Value]
             option, value = param
@@ -83,35 +72,44 @@ class Module:
 
     def generate(self, obfuscate=False, obfuscationCommand=""):
 
-        moduleName = self.info["Name"]
-        
+
+        list_computers = self.options["IPs"]['Value']
+
+
         # read in the common powerview.ps1 module source code
         moduleSource = self.mainMenu.installPath + "/data/module_source/situational_awareness/network/powerview.ps1"
 
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
         f.close()
 
         # get just the code needed for the specified function
-        script = helpers.generate_dynamic_powershell_script(moduleCode, moduleName)
+        script = helpers.strip_powershell_comments(moduleCode)
 
-        script += moduleName + " "
+        script += "\n" + """$Servers = Get-DomainComputer | ForEach-Object {try{Resolve-DNSName $_.dnshostname -Type A -errorAction SilentlyContinue}catch{Write-Warning 'Computer Offline or Not Responding'} } | Select-Object -ExpandProperty IPAddress -ErrorAction SilentlyContinue; $count = 0; $subarry =@(); foreach($i in $Servers){$IPByte = $i.Split("."); $subarry += $IPByte[0..2] -join"."} $final = $subarry | group; Write-Output{The following subnetworks were discovered:}; $final | ForEach-Object {Write-Output "$($_.Name).0/24 - $($_.Count) Hosts"}; """
 
-        for option,values in self.options.iteritems():
+        if list_computers.lower() == "true":
+            script += "$Servers;"
+
+        for option,values in self.options.items():
             if option.lower() != "agent":
                 if values['Value'] and values['Value'] != '':
                     if values['Value'].lower() == "true":
                         # if we're just adding a switch
                         script += " -" + str(option)
                     else:
-                        script += " -" + str(option) + " " + str(values['Value']) 
+                        script += " -" + str(option) + " " + str(values['Value'])
 
-        script += ' | Out-String | %{$_ + \"`n\"};"`n'+str(moduleName)+' completed!"'
+        script += ' | Out-String | %{$_ + \"`n\"};"`n'+ "get_subnet_ranges"+' completed!"'
+
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script
+

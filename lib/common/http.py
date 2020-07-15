@@ -9,28 +9,34 @@ handler (RequestHandler).
 These are the first places URI requests are processed.
 
 """
+from __future__ import absolute_import
 
-from BaseHTTPServer import BaseHTTPRequestHandler
-import BaseHTTPServer, threading, ssl, os, string, random
+from future import standard_library
+
+standard_library.install_aliases()
+from http.server import BaseHTTPRequestHandler
+import http.server, threading, ssl, os
 from pydispatch import dispatcher
 import re
 import json
 
 # Empire imports
-import encryption
-import helpers
+from . import helpers
 
 
-#TODO: place this in a config
-def default_page():
-    """
-    Returns the default page for this server.
-    """
-    page = "<html><body><h1>It works!</h1>"
-    page += "<p>This is the default web page for this server.</p>"
-    page += "<p>The web server software is running but no content has been added, yet.</p>"
-    page += "</body></html>"
-    return page
+def default_page(path_to_html_file="empty"):
+    if path_to_html_file == "empty":
+        """
+        Returns the default page for this server.
+        """
+        page = "<html><body><h1>It works!</h1>"
+        page += "<p>This is the default web page for this server.</p>"
+        page += "<p>The web server software is running but no content has been added, yet.</p>"
+        page += "</body></html>"
+        return page
+    else:
+        html = open(path_to_html_file, 'r').read()
+        return html
 
 ###############################################################
 #
@@ -182,7 +188,7 @@ class EmpireServer(threading.Thread):
             threading.Thread.__init__(self)
             self.server = None
 
-            self.server = BaseHTTPServer.HTTPServer((lhost, int(port)), RequestHandler)
+            self.server = http.server.HTTPServer((lhost, int(port)), RequestHandler)
 
             # pass the agent handler object along for the RequestHandler
             self.server.agents = handler
@@ -242,4 +248,3 @@ class EmpireServer(threading.Thread):
                     thread._Thread__stop()
                 except:
                     pass
-

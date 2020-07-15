@@ -1,7 +1,12 @@
-import base64
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -11,6 +16,10 @@ class Module:
             'Author': ['@424f424f'],
 
             'Description': ("Tests credentials against Basic Authentication."),
+
+            'Software': '',
+
+            'Techniques': ['T1071'],
 
             'Background' : True,
 
@@ -106,7 +115,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -116,7 +125,7 @@ class Module:
 
         scriptEnd = "\nTest-Login"
 
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent" and option.lower() != "showall":
                 if values['Value'] and values['Value'] != '':
                     if values['Value'].lower() == "true":
@@ -126,7 +135,11 @@ class Module:
                         scriptEnd += " -" + str(option) + " " + str(values['Value']) 
 
         scriptEnd += " | Out-String"
+
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script
+

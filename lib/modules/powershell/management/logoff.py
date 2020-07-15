@@ -1,6 +1,9 @@
+from builtins import object
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +13,10 @@ class Module:
             'Author': ['@harmj0y'],
 
             'Description': ("Logs the current user (or all users) off the machine."),
+
+            'Software': '',
+
+            'Techniques': ['T1098'],
 
             'Background' : False,
 
@@ -61,6 +68,9 @@ class Module:
             script = "'Logging off all users.'; Start-Sleep -s 3; $null = (gwmi win32_operatingsystem).Win32Shutdown(4)"
         else:
             script = "'Logging off current user.'; Start-Sleep -s 3; shutdown /l /f"
+
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script

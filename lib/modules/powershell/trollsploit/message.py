@@ -1,6 +1,10 @@
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +14,10 @@ class Module:
             'Author': ['@harmj0y'],
 
             'Description': ("Displays a specified message to the user."),
+
+            'Software': '',
+
+            'Techniques': ['T1491'],
 
             'Background' : True,
 
@@ -86,7 +94,7 @@ function Invoke-Message {
 }
 Invoke-Message"""
 
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent" and option.lower() != "computername":
                 if values['Value'] and values['Value'] != '':
                     if values['Value'].lower() == "true":
@@ -94,6 +102,10 @@ Invoke-Message"""
                         script += " -" + str(option)
                     else:
                         script += " -" + str(option) + " \"" + str(values['Value'].strip("\"")) + "\""
+
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script
+

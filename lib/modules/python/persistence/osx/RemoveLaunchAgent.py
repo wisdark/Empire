@@ -1,6 +1,7 @@
-from lib.common import helpers
+from builtins import object
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -15,6 +16,10 @@ class Module:
             # more verbose multi-line description of the module
             'Description': ('Remove an Empire Launch Daemon.'),
 
+            'Software': '',
+
+            'Techniques': ['T1055'],
+
             # True if the module needs to run in the background
             'Background' : False,
 
@@ -22,7 +27,7 @@ class Module:
             'OutputExtension' : None,
 
             # if the module needs administrative privileges
-            'NeedsAdmin' : True,
+            'NeedsAdmin' : False,
 
             # True if the method doesn't touch disk/is reasonably opsec safe
             'OpsecSafe' : True,
@@ -77,14 +82,14 @@ class Module:
 
 
     def generate(self, obfuscate=False, obfuscationCommand=""):
-        
+
         plistpath = self.options['PlistPath']['Value']
         programpath = self.options['ProgramPath']['Value']
 
 
 
         script = """
-import subprocess 
+import subprocess
 
 process = subprocess.Popen('launchctl unload %s', stdout=subprocess.PIPE, shell=True)
 process.communicate()
@@ -95,8 +100,9 @@ process.communicate()
 process = subprocess.Popen('rm %s', stdout=subprocess.PIPE, shell=True)
 process.communicate()
 
-print "\\n [+] %s has been removed"
-print "\\n [+] %s has been removed"
+print("\\n [+] %s has been removed")
+print("\\n [+] %s has been removed")
 """ %(plistpath,plistpath,programpath,plistpath,programpath)
 
         return script
+

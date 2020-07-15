@@ -1,6 +1,9 @@
+from __future__ import print_function
+from builtins import str
+from builtins import object
 from lib.common import helpers
 
-class Module:
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -9,9 +12,10 @@ class Module:
             'Author': ['@_nullbind', '@0xbadjuju'],
             'Description': ('Based on the instance name, test if SQL Server '
                             'is configured with default passwords.'),
+            'Software': '',
+            'Techniques': ['T1256'],
             'Background' : True,
             'OutputExtension' : None,
-            
             'NeedsAdmin' : False,
             'OpsecSafe' : True,
             'Language' : 'powershell',
@@ -78,20 +82,20 @@ class Module:
             with open(moduleSource, 'r') as source:
                 script = source.read()
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         if check_all:
-            auxModuleSource = self.mainMenu.installPath + "data/module_source/situational_awareness/network/Get-SQLInstanceDomain.ps1"
+            ModuleSource = self.mainMenu.installPath + "data/module_source/situational_awareness/network/Get-SQLInstanceDomain.ps1"
             if obfuscate:
-                helpers.obfuscate_module(moduleSource=auxModuleSource, obfuscationCommand=obfuscationCommand)
-                auxModuleSource = moduleSource.replace("module_source", "obfuscated_module_source")
+                helpers.obfuscate_module(moduleSource=moduleSource, obfuscationCommand=obfuscationCommand)
+                ModuleSource = moduleSource.replace("module_source", "obfuscated_module_source")
             try:
-                with open(auxModuleSource, 'r') as auxSource:
+                with open(ModuleSource, 'r') as auxSource:
                     auxScript = auxSource.read()
                     script += " " + auxScript
             except:
-                print helpers.color("[!] Could not read additional module source path at: " + str(auxModuleSource))
+                print(helpers.color("[!] Could not read additional module source path at: " + str(ModuleSource)))
             scriptEnd = " Get-SQLInstanceDomain "
             if username != "":
                 scriptEnd += " -Username "+username
@@ -101,7 +105,11 @@ class Module:
         scriptEnd += " Get-SQLServerLoginDefaultPw"
         if instance != "" and not check_all:
             scriptEnd += " -Instance "+instance
+        # Get the random function name generated at install and patch the stager with the proper function name
+
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

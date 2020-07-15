@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +16,10 @@ class Module:
             'Author': ['@harmj0y'],
 
             'Description': ('Queries the domain for current computer objects. Part of PowerView.'),
+
+            'Software': 'S0194',
+
+            'Techniques': ['T1082'],
 
             'Background' : True,
 
@@ -150,7 +160,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -161,7 +171,7 @@ class Module:
 
         script += "\n" + moduleName + " "
 
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent":
                 if values['Value'] and values['Value'] != '':
                     if values['Value'].lower() == "true":
@@ -171,6 +181,10 @@ class Module:
                         script += " -" + str(option) + " " + str(values['Value']) 
 
         script += ' | Out-String | %{$_ + \"`n\"};"`n'+str(moduleName)+' completed!"'
+
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script
+

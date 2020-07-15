@@ -1,7 +1,10 @@
-import base64
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -11,6 +14,10 @@ class Module:
             'Author': ['@harmj0y'],
 
             'Description': ("Kills any process starting with a particular name."),
+
+            'Software': '',
+
+            'Techniques': ['T1491'],
 
             'Background' : True,
 
@@ -100,7 +107,7 @@ function Invoke-ProcessKiller {
 Invoke-ProcessKiller"""
 
 
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent":
                 if values['Value'] and values['Value'] != '':
                     if values['Value'].lower() == "true":
@@ -111,4 +118,7 @@ Invoke-ProcessKiller"""
         
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script
+

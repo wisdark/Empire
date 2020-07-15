@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +16,10 @@ class Module:
             'Author': ['@James O\'Neill'],
 
             'Description': ('Gets files which have been indexed by Windows desktop search.'),
+
+            'Software': '',
+
+            'Techniques': ['T1083'],
 
             'Background' : False,
 
@@ -47,7 +57,7 @@ class Module:
         # save off a copy of the mainMenu object to access external functionality
         #   like listeners/agent handlers/etc.
         self.mainMenu = mainMenu
-        
+
         for param in params:
             # parameter format is [Name, Value]
             option, value = param
@@ -65,7 +75,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -75,7 +85,7 @@ class Module:
 
         scriptEnd = "Get-IndexedItem "
 
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent":
                 if values['Value'] and values['Value'] != '':
                     if values['Value'].lower() == "true":
@@ -90,4 +100,6 @@ class Module:
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

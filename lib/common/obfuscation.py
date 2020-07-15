@@ -7,9 +7,11 @@ functionality but different meta-characteristics (no comments, shorter length,
 better evasion, etc.)
 """
 
-from pyminifier import token_utils as py_tokenizer
+from builtins import object
+
 from pyminifier import minification as py_minifier
-from pyminifier import obfuscate as py_obfuscator
+from pyminifier import token_utils as py_tokenizer
+
 
 ################################################################################
 #

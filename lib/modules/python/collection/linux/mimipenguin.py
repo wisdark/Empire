@@ -1,6 +1,7 @@
-from lib.common import helpers
+from builtins import object
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -11,6 +12,10 @@ class Module:
 
             # list of one or more authors for the module
             'Author': ['@rvrsh3ll'],
+
+            'Software': 'S0179',
+
+            'Techniques': ['T1003'],
 
             # more verbose multi-line description of the module
             'Description': ("Port of huntergregal mimipenguin. Harvest's current user's cleartext credentials."),
@@ -309,4 +314,5 @@ if __name__ == '__main__':
 """
 
         return script
+
 

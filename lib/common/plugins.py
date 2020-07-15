@@ -1,5 +1,7 @@
 """ Utilities and helpers and etc. for plugins """
+from __future__ import print_function
 
+from builtins import object
 import importlib
 
 import lib.common.helpers as helpers
@@ -29,6 +31,9 @@ class Plugin(object):
         # now that everything is loaded, register functions and etc. onto the main menu
         print(helpers.color("[*] Registering plugin with menu..."))
         self.register(mainMenu)
+
+        # Give access to main menu
+        self.mainMenu = mainMenu
 
     def onLoad(self):
         """ Things to do during init: meant to be overridden by

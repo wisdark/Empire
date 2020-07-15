@@ -1,6 +1,7 @@
+from builtins import object
 from lib.common import helpers
 
-class Module:
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +11,10 @@ class Module:
             'Author': ['@obscuresec', '@mattifestation'],
 
             'Description': ('Starts a packet capture on a host using netsh.'),
+
+            'Software': '',
+
+            'Techniques': ['T1040'],
 
             'Background' : False,
 
@@ -70,7 +75,6 @@ class Module:
             if option in self.options:
                 self.options[option]['Value'] = value
 
-
     def generate(self, obfuscate=False, obfuscationCommand=""):
         
         maxSize = self.options['MaxSize']['Value']
@@ -89,6 +93,9 @@ class Module:
 
             if persistent != "":
                 script += " persistent=yes"
+        # Get the random function name generated at install and patch the stager with the proper function name
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script

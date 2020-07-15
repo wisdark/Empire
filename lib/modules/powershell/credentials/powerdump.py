@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +16,10 @@ class Module:
             'Author': ['DarkOperator', 'winfang', 'Kathy Peters', 'ReL1K'],
 
             'Description': "Dumps hashes from the local system using Posh-SecMod's Invoke-PowerDump",
+
+            'Software': '',
+
+            'Techniques': ['T1003'],
 
             'Background' : True,
 
@@ -42,7 +52,7 @@ class Module:
         # save off a copy of the mainMenu object to access external functionality
         #   like listeners/agent handlers/etc.
         self.mainMenu = mainMenu
-        
+
         for param in params:
             # parameter format is [Name, Value]
             option, value = param
@@ -60,7 +70,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -72,4 +82,6 @@ class Module:
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

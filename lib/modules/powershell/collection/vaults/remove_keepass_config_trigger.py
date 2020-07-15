@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -14,6 +20,10 @@ class Module:
 
             # more verbose multi-line description of the module
             'Description': ('This module removes all triggers from all KeePass configs found by Find-KeePassConfig.'),
+
+            'Software': '',
+
+            'Techniques': ['T1033'],
 
             # True if the module needs to run in the background
             'Background' : True,
@@ -77,7 +87,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -91,7 +101,10 @@ class Module:
 
         scriptEnd += "\nFind-KeePassconfig | Remove-KeePassConfigTrigger "
         scriptEnd += ' | Format-List | Out-String | %{$_ + \"`n\"};"`n'+str(moduleName)+' completed!"'
+
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

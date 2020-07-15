@@ -1,6 +1,10 @@
+from builtins import object
+from builtins import str
+
 from lib.common import helpers
 
-class Module:
+
+class Module(object):
 
     def __init__(self, mainMenu, params=[]):
 
@@ -10,6 +14,10 @@ class Module:
             'Author': ['@harmj0y'],
 
             'Description': ('Zips up a target folder for later exfiltration.'),
+
+            'Software': '',
+
+            'Techniques': ['T1002'],
 
             'Background' : False,
 
@@ -88,10 +96,13 @@ function Invoke-ZipFolder
 }
 Invoke-ZipFolder"""
         
-        for option,values in self.options.iteritems():
+        for option,values in self.options.items():
             if option.lower() != "agent":
                 if values['Value'] and values['Value'] != '':
                     script += " -" + str(option) + " " + str(values['Value']) 
+
         if obfuscate:
             script = helpers.obfuscate(self.mainMenu.installPath, psScript=script, obfuscationCommand=obfuscationCommand)
+        script = helpers.keyword_obfuscation(script)
+
         return script
